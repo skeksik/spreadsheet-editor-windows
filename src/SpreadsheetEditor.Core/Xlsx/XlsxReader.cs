@@ -121,7 +121,9 @@ public static class XlsxReader
         var root = workbookPart.Workbook
             ?? throw new InvalidDataException("The workbook part is empty.");
         var system = root.WorkbookProperties?.Date1904?.Value == true ? DateSystem.Date1904 : DateSystem.Date1900;
-        var formats = NumberFormatTable.Read(workbookPart.WorkbookStylesPart?.Stylesheet);
+        var stylesheet = workbookPart.WorkbookStylesPart?.Stylesheet;
+        var formats = NumberFormatTable.Read(stylesheet);
+        var styles = StyleTable.Read(stylesheet, workbookPart.ThemePart);
         var sharedStrings = SharedStrings.Read(workbookPart.SharedStringTablePart, cancellationToken);
         var cells = new WorksheetCells(sharedStrings, formats, system, culture);
 
@@ -136,7 +138,8 @@ public static class XlsxReader
                 continue;
             }
             var grid = cells.Read(part, cancellationToken);
-            var sheet = SheetBuilder.Build(entry.Name?.Value ?? "", id, entry.SheetId?.Value ?? 0, grid);
+            var pictures = DrawingPictures.Read(part, cancellationToken);
+            var sheet = SheetBuilder.Build(entry.Name?.Value ?? "", id, entry.SheetId?.Value ?? 0, grid, styles, pictures);
             if (sheet is null)
             {
                 // No occupied cell: no tab, and the worksheet stays untouched in the package (§9.10).

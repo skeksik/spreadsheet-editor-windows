@@ -1,6 +1,9 @@
 using System.Globalization;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using A = DocumentFormat.OpenXml.Drawing;
 using X = DocumentFormat.OpenXml.Spreadsheet;
+using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace SpreadsheetEditor.Core.Tests.Xlsx;
 
@@ -10,6 +13,9 @@ internal sealed class TestSheet
     private readonly TestWorkbook workbook;
     private readonly SortedDictionary<int, SortedDictionary<int, X.Cell>> rows = [];
     private readonly List<string> merges = [];
+    private readonly Dictionary<int, uint> rowStyles = [];
+    private readonly List<(uint First, uint Last, uint Style)> columnStyles = [];
+    private readonly List<(int Column, int Row, byte[] Bytes, PictureAnchor Anchor)> pictures = [];
 
     internal TestSheet(TestWorkbook workbook) => this.workbook = workbook;
 
@@ -75,7 +81,29 @@ internal sealed class TestSheet
         Put(reference, new X.Cell { DataType = X.CellValues.Error, CellValue = new X.CellValue(error) }, 0);
 
     /// <summary>Adds a cell with a style and no value.</summary>
-    public TestSheet Empty(string reference) => Put(reference, new X.Cell(), 1);
+    public TestSheet Empty(string reference, uint style = 1) => Put(reference, new X.Cell(), style);
+
+    /// <summary>Gives a row a style (<c>s</c> with <c>customFormat="1"</c>).</summary>
+    public TestSheet RowStyle(int row, uint style)
+    {
+        rowStyles[row] = style;
+        return this;
+    }
+
+    /// <summary>Gives columns <paramref name="first"/> to <paramref name="last"/> (1-based) a style with a <c>col</c> element.</summary>
+    public TestSheet ColumnStyle(uint first, uint last, uint style)
+    {
+        columnStyles.Add((first, last, style));
+        return this;
+    }
+
+    /// <summary>Adds a picture anchored at the cell <paramref name="reference"/>; pictures are written in the order they are added.</summary>
+    public TestSheet Picture(string reference, byte[] bytes, PictureAnchor anchor = PictureAnchor.TwoCell)
+    {
+        var (column, row) = Parse(reference);
+        pictures.Add((column, row, bytes, anchor));
+        return this;
+    }
 
     public TestSheet Merge(string range)
     {
@@ -86,22 +114,102 @@ internal sealed class TestSheet
     internal X.Worksheet ToWorksheet()
     {
         var data = new X.SheetData();
+        foreach (var index in rowStyles.Keys.Where(r => !rows.ContainsKey(r)))
+        {
+            rows[index] = [];
+        }
         foreach (var (index, cells) in rows)
         {
             var row = new X.Row { RowIndex = (uint)index };
+            if (rowStyles.TryGetValue(index, out var rowStyle))
+            {
+                row.StyleIndex = rowStyle;
+                row.CustomFormat = true;
+            }
             foreach (var cell in cells.Values)
             {
                 row.AppendChild((X.Cell)cell.CloneNode(true));
             }
             data.AppendChild(row);
         }
-        var worksheet = new X.Worksheet(data);
+        var worksheet = new X.Worksheet();
+        if (columnStyles.Count > 0)
+        {
+            worksheet.AppendChild(new X.Columns(columnStyles.Select(c => new X.Column { Min = c.First, Max = c.Last, Style = c.Style, Width = 10, CustomWidth = true })));
+        }
+        worksheet.AppendChild(data);
         if (merges.Count > 0)
         {
             worksheet.AppendChild(new X.MergeCells(merges.Select(m => new X.MergeCell { Reference = m })));
         }
         return worksheet;
     }
+
+    /// <summary>Writes the pictures into a drawing part of the worksheet part, after <see cref="ToWorksheet"/>.</summary>
+    internal void AddDrawing(WorksheetPart part)
+    {
+        if (pictures.Count == 0)
+        {
+            return;
+        }
+        var drawing = part.AddNewPart<DrawingsPart>();
+        var root = new Xdr.WorksheetDrawing();
+        uint id = 1;
+        foreach (var (column, row, bytes, anchor) in pictures)
+        {
+            string blipId;
+            if (anchor == PictureAnchor.Linked)
+            {
+                blipId = drawing.AddExternalRelationship(
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", new Uri("file:///pictures/linked.png")).Id;
+            }
+            else
+            {
+                var image = drawing.AddImagePart(ImagePartType.Png);
+                using (var stream = new MemoryStream(bytes))
+                {
+                    image.FeedData(stream);
+                }
+                blipId = drawing.GetIdOfPart(image);
+            }
+            var blip = anchor == PictureAnchor.Linked ? new A.Blip { Link = blipId } : new A.Blip { Embed = blipId };
+            var picture = new Xdr.Picture(
+                new Xdr.NonVisualPictureProperties(
+                    new Xdr.NonVisualDrawingProperties { Id = id, Name = $"Picture {id}" },
+                    new Xdr.NonVisualPictureDrawingProperties()),
+                new Xdr.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
+                new Xdr.ShapeProperties());
+            id++;
+            var extent = new Xdr.Extent { Cx = 914400, Cy = 914400 };
+            OpenXmlElement element = anchor switch
+            {
+                PictureAnchor.OneCell => new Xdr.OneCellAnchor(From(column, row), extent, picture, new Xdr.ClientData()),
+                PictureAnchor.Absolute => new Xdr.AbsoluteAnchor(new Xdr.Position { X = 0, Y = 0 }, extent, picture, new Xdr.ClientData()),
+                PictureAnchor.Grouped => new Xdr.TwoCellAnchor(
+                    From(column, row),
+                    To(column, row),
+                    new Xdr.GroupShape(
+                        new Xdr.NonVisualGroupShapeProperties(
+                            new Xdr.NonVisualDrawingProperties { Id = id++, Name = "Group" },
+                            new Xdr.NonVisualGroupShapeDrawingProperties()),
+                        new Xdr.GroupShapeProperties(),
+                        picture),
+                    new Xdr.ClientData()),
+                _ => new Xdr.TwoCellAnchor(From(column, row), To(column, row), picture, new Xdr.ClientData()),
+            };
+            root.AppendChild(element);
+        }
+        drawing.WorksheetDrawing = root;
+        part.Worksheet!.AppendChild(new X.Drawing { Id = part.GetIdOfPart(drawing) });
+    }
+
+    private static Xdr.FromMarker From(int column, int row) =>
+        new(Marker(column - 1), new Xdr.ColumnOffset("0"), new Xdr.RowId((row - 1).ToString(CultureInfo.InvariantCulture)), new Xdr.RowOffset("0"));
+
+    private static Xdr.ToMarker To(int column, int row) =>
+        new(Marker(column), new Xdr.ColumnOffset("0"), new Xdr.RowId(row.ToString(CultureInfo.InvariantCulture)), new Xdr.RowOffset("0"));
+
+    private static Xdr.ColumnId Marker(int column) => new(column.ToString(CultureInfo.InvariantCulture));
 
     private TestSheet Put(string reference, X.Cell cell, uint style)
     {
