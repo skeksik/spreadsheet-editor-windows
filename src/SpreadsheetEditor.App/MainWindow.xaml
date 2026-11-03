@@ -7,8 +7,15 @@
         <MicaBackdrop Kind="Base" />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="Root">
+    <!-- A .xlsx or .csv file dropped anywhere on the window opens (spec §2.1, §10.4); the background makes the whole area a drop target. -->
+    <Grid
+        x:Name="Root"
+        AllowDrop="True"
+        Background="Transparent"
+        DragOver="OnDragOver"
+        Drop="OnDrop">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -20,20 +27,71 @@
             </TitleBar.IconSource>
         </TitleBar>
 
-        <!-- The File menu grows with docs/roadmap.md (open, save, save as, recent files). -->
+        <!-- The File menu (spec §10.5); recent files come with feat/app-settings. Access keys come from the resources (x:Uid). -->
         <MenuBar Grid.Row="1">
             <MenuBarItem x:Name="FileMenu" x:Uid="MainWindow_FileMenu">
-                <MenuFlyoutItem x:Name="ExitItem" x:Uid="MainWindow_ExitItem" Click="OnExitClick" />
+                <MenuFlyoutItem
+                    x:Name="NewItem"
+                    x:Uid="MainWindow_NewItem"
+                    Click="OnNewClick"
+                    IsEnabled="{x:Bind ViewModel.CanRunFileCommands, Mode=OneWay}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="N" Modifiers="Control" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem
+                    x:Name="OpenItem"
+                    x:Uid="MainWindow_OpenItem"
+                    Click="OnOpenClick"
+                    IsEnabled="{x:Bind ViewModel.CanRunFileCommands, Mode=OneWay}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="O" Modifiers="Control" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem
+                    x:Name="SaveItem"
+                    x:Uid="MainWindow_SaveItem"
+                    Click="OnSaveClick"
+                    IsEnabled="{x:Bind ViewModel.CanSave, Mode=OneWay}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="S" Modifiers="Control" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem
+                    x:Name="SaveAsItem"
+                    x:Uid="MainWindow_SaveAsItem"
+                    Click="OnSaveAsClick"
+                    IsEnabled="{x:Bind ViewModel.CanSave, Mode=OneWay}">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="S" Modifiers="Control,Shift" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <!-- No accelerator: Alt+F4 is the system's. -->
+                <MenuFlyoutItem
+                    x:Name="ExitItem"
+                    x:Uid="MainWindow_ExitItem"
+                    Click="OnExitClick"
+                    IsEnabled="{x:Bind ViewModel.CanRunFileCommands, Mode=OneWay}" />
             </MenuBarItem>
         </MenuBar>
+
+        <!-- Shown while a file is read or written (spec §9.53). -->
+        <ProgressBar
+            x:Name="BusyBar"
+            x:Uid="MainWindow_BusyBar"
+            Grid.Row="2"
+            IsIndeterminate="True"
+            Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
 
         <!-- Shown while no spreadsheet is open. -->
         <StackPanel
             x:Name="EmptyState"
-            Grid.Row="2"
+            Grid.Row="3"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
-            Spacing="8">
+            Spacing="8"
+            Visibility="{x:Bind ViewModel.HasNoDocument, Mode=OneWay}">
             <FontIcon HorizontalAlignment="Center" FontSize="48" Glyph="&#xE9F9;" />
             <TextBlock x:Name="EmptyTitle" x:Uid="MainWindow_EmptyTitle" HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock
@@ -42,5 +100,16 @@
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
+
+        <!-- A placeholder for the open document, replaced by the sheet tabs and cards (feat/app-sheets, feat/app-cards). -->
+        <ScrollViewer Grid.Row="3" Visibility="{x:Bind ViewModel.HasDocument, Mode=OneWay}">
+            <ItemsControl Margin="24,16" ItemsSource="{x:Bind ViewModel.SheetSummaries}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Margin="0,4" Text="{x:Bind}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
     </Grid>
 </Window>

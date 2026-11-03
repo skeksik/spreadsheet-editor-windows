@@ -75,4 +75,160 @@
     <value>Откройте файл .xlsx или .csv, чтобы редактировать его строки как карточки.</value>
     <comment>Shown under MainWindow_EmptyTitle.</comment>
   </data>
+  <data name="MainWindow_FileMenu.AccessKey" xml:space="preserve">
+    <value>Ф</value>
+    <comment>Access key of the File menu (Alt+key).</comment>
+  </data>
+  <data name="MainWindow_NewItem.Text" xml:space="preserve">
+    <value>Создать</value>
+    <comment>File menu: a new, empty spreadsheet (Ctrl+N).</comment>
+  </data>
+  <data name="MainWindow_NewItem.AccessKey" xml:space="preserve">
+    <value>С</value>
+    <comment>Access key of File › New.</comment>
+  </data>
+  <data name="MainWindow_OpenItem.Text" xml:space="preserve">
+    <value>Открыть</value>
+    <comment>File menu: opens a .xlsx or .csv file (Ctrl+O).</comment>
+  </data>
+  <data name="MainWindow_OpenItem.AccessKey" xml:space="preserve">
+    <value>О</value>
+    <comment>Access key of File › Open.</comment>
+  </data>
+  <data name="MainWindow_SaveItem.Text" xml:space="preserve">
+    <value>Сохранить</value>
+    <comment>File menu: saves to the current file (Ctrl+S).</comment>
+  </data>
+  <data name="MainWindow_SaveItem.AccessKey" xml:space="preserve">
+    <value>Х</value>
+    <comment>Access key of File › Save.</comment>
+  </data>
+  <data name="MainWindow_SaveAsItem.Text" xml:space="preserve">
+    <value>Сохранить как</value>
+    <comment>File menu: saves to a file the user chooses (Ctrl+Shift+S).</comment>
+  </data>
+  <data name="MainWindow_SaveAsItem.AccessKey" xml:space="preserve">
+    <value>К</value>
+    <comment>Access key of File › Save as.</comment>
+  </data>
+  <data name="MainWindow_ExitItem.AccessKey" xml:space="preserve">
+    <value>В</value>
+    <comment>Access key of File › Exit.</comment>
+  </data>
+  <data name="MainWindow_BusyBar.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Открытие или сохранение файла</value>
+    <comment>The screen reader name of the progress bar shown while a file is opened or saved.</comment>
+  </data>
+  <data name="UntitledName" xml:space="preserve">
+    <value>Без имени</value>
+    <comment>The name of a new document that was never saved, in the title and the save question.</comment>
+  </data>
+  <data name="NewSheetBaseName" xml:space="preserve">
+    <value>Лист</value>
+    <comment>The name of the sheet in a new document, followed by a number (Sheet1). Must be a valid Excel sheet name.</comment>
+  </data>
+  <data name="SheetSummary" xml:space="preserve">
+    <value>{0} — карточек: {1}</value>
+    <comment>Placeholder line for an open sheet until the card view exists. {0} is the sheet name, {1} the number of cards.</comment>
+  </data>
+  <data name="NoSheetsSummary" xml:space="preserve">
+    <value>В этом файле нет листов с таблицей.</value>
+    <comment>Placeholder shown for an open file without any sheet that holds a table.</comment>
+  </data>
+  <data name="SaveChangesQuestion" xml:space="preserve">
+    <value>Сохранить изменения в файле «{0}»?</value>
+    <comment>Title of the unsaved-changes question (spec §10.4). {0} is the file name.</comment>
+  </data>
+  <data name="SaveChangesSave" xml:space="preserve">
+    <value>Сохранить</value>
+    <comment>Unsaved-changes question: the primary button, saves first.</comment>
+  </data>
+  <data name="SaveChangesDontSave" xml:space="preserve">
+    <value>Не сохранять</value>
+    <comment>Unsaved-changes question: goes on without saving.</comment>
+  </data>
+  <data name="SaveChangesCancel" xml:space="preserve">
+    <value>Отмена</value>
+    <comment>Unsaved-changes question: cancels the action.</comment>
+  </data>
+  <data name="OpenFailedTitle" xml:space="preserve">
+    <value>Не удалось открыть «{0}»</value>
+    <comment>Title of the error shown when a file cannot be opened. {0} is the file name.</comment>
+  </data>
+  <data name="SaveFailedTitle" xml:space="preserve">
+    <value>Не удалось сохранить «{0}»</value>
+    <comment>Title of the error shown when a file cannot be saved. {0} is the file name.</comment>
+  </data>
+  <data name="ErrorDetailsHeader" xml:space="preserve">
+    <value>Подробности</value>
+    <comment>Header of the expander that holds the technical error message.</comment>
+  </data>
+  <data name="ErrorDialogClose" xml:space="preserve">
+    <value>ОК</value>
+    <comment>The button that closes an error message.</comment>
+  </data>
+  <data name="SaveTypeXlsx" xml:space="preserve">
+    <value>Книга Excel</value>
+    <comment>Save picker: the .xlsx file type.</comment>
+  </data>
+  <data name="SaveTypeCsv" xml:space="preserve">
+    <value>Файл CSV</value>
+    <comment>Save picker: the .csv file type.</comment>
+  </data>
+  <data name="FileProblem_Unknown" xml:space="preserve">
+    <value>Что-то пошло не так. Подробности — ниже.</value>
+    <comment>Error explanation: an error without a plain explanation.</comment>
+  </data>
+  <data name="FileProblem_NotFound" xml:space="preserve">
+    <value>Файл или его папка не существует. Возможно, его переместили, переименовали или удалили.</value>
+    <comment>Error explanation: the file or folder does not exist.</comment>
+  </data>
+  <data name="FileProblem_AccessDenied" xml:space="preserve">
+    <value>Windows не разрешает доступ к этому файлу. Проверьте, что файл не только для чтения и что у вас есть права на него.</value>
+    <comment>Error explanation: no permission, or a read-only file.</comment>
+  </data>
+  <data name="FileProblem_ReadFailed" xml:space="preserve">
+    <value>Не удалось прочитать файл. Возможно, он открыт в другой программе: закройте его там и повторите попытку.</value>
+    <comment>Error explanation: the file could not be read (often locked by another program).</comment>
+  </data>
+  <data name="FileProblem_WriteFailed" xml:space="preserve">
+    <value>Не удалось записать файл. Возможно, он открыт в другой программе или диск заполнен. Файл не изменён, а ваши изменения по-прежнему открыты здесь.</value>
+    <comment>Error explanation: the file could not be written.</comment>
+  </data>
+  <data name="FileProblem_NotAWorkbook" xml:space="preserve">
+    <value>Этот файл не является книгой Excel (.xlsx).</value>
+    <comment>Error explanation: the file is not an .xlsx workbook.</comment>
+  </data>
+  <data name="FileProblem_LegacyOrEncrypted" xml:space="preserve">
+    <value>Это книга Excel старого формата (.xls) или книга, защищённая паролем. Откройте её в Excel и сохраните как книгу .xlsx без пароля.</value>
+    <comment>Error explanation: an .xls or password-protected workbook.</comment>
+  </data>
+  <data name="FileProblem_Damaged" xml:space="preserve">
+    <value>Книга повреждена, и её не удаётся прочитать.</value>
+    <comment>Error explanation: a damaged workbook.</comment>
+  </data>
+  <data name="FileProblem_CsvEmpty" xml:space="preserve">
+    <value>Файл пуст: в нём нет строки заголовков.</value>
+    <comment>Error explanation: an empty .csv file.</comment>
+  </data>
+  <data name="FileProblem_CsvUnsupportedEncoding" xml:space="preserve">
+    <value>Кодировка текста файла не поддерживается. Сохраните его в UTF-8 и повторите попытку.</value>
+    <comment>Error explanation: a .csv file in an unsupported text encoding.</comment>
+  </data>
+  <data name="FileProblem_CsvUnterminatedQuote" xml:space="preserve">
+    <value>В файле есть значение в кавычках, которое не закрыто.</value>
+    <comment>Error explanation: a .csv file with an unclosed quote.</comment>
+  </data>
+  <data name="FileProblem_SaveNotSupported" xml:space="preserve">
+    <value>Spreadsheet Editor пока не умеет сохранять это изменение в файл .xlsx. Ничего не записано, а ваши изменения по-прежнему открыты здесь.</value>
+    <comment>Error explanation: the writer cannot save this change yet.</comment>
+  </data>
+  <data name="FileProblem_InvalidDocument" xml:space="preserve">
+    <value>Таблицу нельзя сохранить в текущем виде: на каждом листе должна быть хотя бы одна запись, а имена листов должны различаться.</value>
+    <comment>Error explanation: the document cannot be saved as it is.</comment>
+  </data>
+  <data name="FileProblem_SourceDamaged" xml:space="preserve">
+    <value>Книга, из которой открыта эта таблица, повреждена, поэтому её нельзя сохранить. Ничего не записано.</value>
+    <comment>Error explanation: the workbook the document came from cannot be read again to save it.</comment>
+  </data>
 </root>

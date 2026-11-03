@@ -11,6 +11,12 @@
     <RootNamespace>SpreadsheetEditor.App</RootNamespace>
     <!-- The executable is SpreadsheetEditor.exe. -->
     <AssemblyName>SpreadsheetEditor</AssemblyName>
+    <!-- The exe's file description, which the taskbar and Task Manager show (docs/notes/localisation.md: it showed "SpreadsheetEditor").
+         The compiler writes FileDescription from AssemblyTitleAttribute: dotnet/roslyn, CSharpCompilation.cs (main, read 2026-11-03),
+         "fileDescription: sourceAssembly.Title ?? ' '" (a blank when there is none). The SDK generates that attribute from AssemblyTitle and defaults AssemblyTitle to
+         the AssemblyName: dotnet/sdk, Microsoft.NET.GenerateAssemblyInfo.targets and Microsoft.NET.DefaultAssemblyInfo.targets (AssemblyTitle is set to
+         $(AssemblyName) when empty), read 2026-11-03. The product name is not translated. -->
+    <AssemblyTitle>Spreadsheet Editor</AssemblyTitle>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
