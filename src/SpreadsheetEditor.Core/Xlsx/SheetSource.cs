@@ -1,3 +1,5 @@
+using SpreadsheetEditor.Core.Model;
+
 namespace SpreadsheetEditor.Core.Xlsx;
 
 /// <summary>
@@ -25,4 +27,28 @@ internal sealed record SheetSource(
     /// group their own formula.
     /// </summary>
     public SharedFormulaMap SharedFormulas { get; init; } = SharedFormulaMap.Empty;
+
+    /// <summary>
+    /// For a worksheet that had no table (no occupied cell outside the metadata column), the picture layout it was read with; null for a
+    /// worksheet with a table. Such a worksheet opens as a new sheet's defaults (docs/spec.md §2.3, §9.10).
+    /// </summary>
+    public ImageLayout? EmptyLayout { get; init; }
+
+    /// <summary>True when the worksheet had no table and opened as a new sheet's defaults (§9.10).</summary>
+    public bool IsEmpty => EmptyLayout is not null;
+
+    /// <summary>
+    /// True when the worksheet had no table and <paramref name="sheet"/> is still exactly the defaults it opened as (§2.3), its picture
+    /// layout included: the writer then leaves the worksheet as it was read (§9.10). Edits undone back to the defaults count as untouched.
+    /// </summary>
+    public bool IsUntouchedEmpty(Sheet sheet) =>
+        EmptyLayout is { } layout
+        && sheet.ImageLayout == layout
+        && string.IsNullOrEmpty(sheet.TableName)
+        && sheet.TableNameColumn == 1
+        && sheet.FirstColumn == 1
+        && sheet.HeaderRow == 1
+        && sheet.FirstDataRow == 2
+        && sheet.Columns is [{ Name: "", IsImageColumn: false, SourceIndex: null }]
+        && sheet.Cards is [{ SourceFirstRow: null, CopiedFromRow: null, Entries: [{ Text: "", Original: null, Style: null, Images.Count: 0 }] }];
 }

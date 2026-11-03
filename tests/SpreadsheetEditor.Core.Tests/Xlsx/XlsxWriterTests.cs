@@ -72,12 +72,14 @@ public sealed class XlsxWriterTests
         var bytes = Change(original, _ => { });
 
         var back = Read(bytes);
-        Assert.AreEqual(2, back.Sheets.Count);
+        AssertSequence(back.Sheets.Select(s => s.Name), "Plants", "Empty", "Tools");
         AssertSequence(Texts(back.Sheets[0].Cards[0]), "Fern", "3", "TRUE", "=B2*2");
         using var before = new XlsxPackage(original);
         using var after = new XlsxPackage(bytes);
         AssertSequence(after.SheetNames, "Plants", "Empty", "Chart", "Tools");
+        // The empty worksheet opened as a tab and was not edited: it is written back as it was, without a print area (§9.10).
         AssertSameXml(before.Part("Empty"), after.Part("Empty"));
+        Assert.IsFalse(after.Workbook.DefinedNames!.Elements<X.DefinedName>().Any(n => n.LocalSheetId?.Value == 1));
         AssertSameXml(before.WorkbookPart.WorkbookStylesPart!, after.WorkbookPart.WorkbookStylesPart!);
         // The defined names are as they were; the sheet without a print area gets one over its table (§5.7).
         var namesBefore = before.Workbook.DefinedNames!.Elements<X.DefinedName>().Select(n => n.OuterXml).ToList();
@@ -647,12 +649,13 @@ public sealed class XlsxWriterTests
 
         var bytes = Change(original, w => w.Sheets.Reverse());
 
+        // The chart sheet keeps its place; the worksheets, the empty one included, follow the tab order (§9.10, §9.31).
         using var before = new XlsxPackage(original);
         using var after = new XlsxPackage(bytes);
-        AssertSequence(after.SheetNames, "C", "Blank", "B", "Chart", "A");
+        AssertSequence(after.SheetNames, "C", "B", "Blank", "Chart", "A");
         Assert.AreEqual(0u, after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single(n => n.Text.StartsWith("C!", StringComparison.Ordinal)).LocalSheetId!.Value);
         AssertSameXml(before.Part("Blank"), after.Part("Blank"));
-        AssertSequence(Read(bytes).Sheets.Select(s => s.Name).ToArray(), "C", "B", "A");
+        AssertSequence(Read(bytes).Sheets.Select(s => s.Name).ToArray(), "C", "B", "Blank", "A");
     }
 
     [TestMethod]
@@ -674,9 +677,9 @@ public sealed class XlsxWriterTests
     public void ANameUsedByAWorksheetTheAppDoesNotShowIsInvalid()
     {
         var book = Plants();
-        book.AddSheet("Blank");
+        book.AddChartSheet("Chart");
 
-        Assert.AreEqual(SpreadsheetWriteError.InvalidWorkbook, WriteError(book.ToBytes(), w => w.Sheets.Add(NewSheet("blank"))));
+        Assert.AreEqual(SpreadsheetWriteError.InvalidWorkbook, WriteError(book.ToBytes(), w => w.Sheets.Add(NewSheet("chart"))));
     }
 
     [TestMethod]
