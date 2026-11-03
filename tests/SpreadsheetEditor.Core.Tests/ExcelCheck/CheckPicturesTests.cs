@@ -53,13 +53,29 @@ public sealed class CheckPicturesTests
     [TestMethod]
     public void TheRedBandsLieOutsideTheShownRegion()
     {
-        // 40 × 90 shown at 2:3 keeps the middle 40 × 60: 15 rows of red above and below.
+        // 40 × 90 shown at 2:3 keeps the middle 40 × 60, rows 15–74: 15 rows above and below it, the 2 nearest grey, the rest red.
         var pixels = CheckPictures.Draw(40, 90, 2, 3, 1);
         for (var y = 0; y < 90; y++)
         {
             var red = Enumerable.Range(0, 40).Count(x => pixels[y, x] == CheckPictures.Red);
-            Assert.AreEqual(y is < 15 or >= 75 ? 40 : 0, red, $"row {y}");
+            var grey = Enumerable.Range(0, 40).Count(x => pixels[y, x] == CheckPictures.Grey);
+            Assert.AreEqual(y is < 13 or >= 77 ? 40 : 0, red, $"red in row {y}");
+            Assert.AreEqual(y is 13 or 14 or 75 or 76 ? 40 : 0, grey, $"grey in row {y}");
         }
+
+        // 120 × 60 shown at 4:3 keeps the middle 80 × 60, columns 20–99: columns 18–19 and 100–101 grey, the rest outside red.
+        var wide = CheckPictures.Draw(120, 60, 4, 3, 4);
+        for (var x = 0; x < 120; x++)
+        {
+            var red = Enumerable.Range(0, 60).Count(y => wide[y, x] == CheckPictures.Red);
+            var grey = Enumerable.Range(0, 60).Count(y => wide[y, x] == CheckPictures.Grey);
+            Assert.AreEqual(x is < 18 or >= 102 ? 60 : 0, red, $"red in column {x}");
+            Assert.AreEqual(x is 18 or 19 or 100 or 101 ? 60 : 0, grey, $"grey in column {x}");
+        }
+
+        // A picture of the region's own aspect has neither.
+        var fits = CheckPictures.Draw(40, 60, 2, 3, 1);
+        Assert.IsFalse(fits.Cast<CheckPictures.Rgb>().Any(p => p == CheckPictures.Red || p == CheckPictures.Grey), "no band");
 
         Assert.AreEqual((0, 15, 40, 60), CheckPictures.Region(40, 90, 2.0 / 3));
         Assert.AreEqual((20, 0, 80, 60), CheckPictures.Region(120, 60, 4.0 / 3));
