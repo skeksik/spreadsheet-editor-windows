@@ -178,6 +178,13 @@ internal sealed class WorksheetWriter
         {
             var entry = card.Entries[j];
             var target = sheet.FirstColumn + j;
+            if (entry.Images.Count > 0 && (!inOwnRows || sheet.Columns[j].SourceIndex != j))
+            {
+                // Pictures are anchored in the drawing, not in the cell: moving them with their card or entry is part B.
+                throw SpreadsheetWriteException.NotSupported(
+                    $"A card or entry with pictures on the sheet \"{sheet.Name}\" was moved; pictures cannot be moved yet.");
+            }
+
             (int Row, int Column)? from = card.SourceFirstRow is { } first && sheet.Columns[j].SourceIndex is { } index
                 ? (first, origin.FirstColumn + index)
                 : null;
@@ -205,6 +212,8 @@ internal sealed class WorksheetWriter
     {
         var value = EntryValue.Resolve(entry, context.Culture);
         var inPlace = from == (row, column);
+        // A value written elsewhere takes the style of the cell it came from: a moved card takes its formatting along.
+        uint? style = !inPlace && from is { } origin ? source.Style(origin.Row, origin.Column) : null;
 
         if (value is not null && ReferenceEquals(value, entry.Original))
         {
@@ -223,8 +232,6 @@ internal sealed class WorksheetWriter
             }
         }
 
-        // The cell gets the style of the cell the value came from: a moved card takes its formatting along.
-        uint? style = !inPlace && from is { } origin ? source.Element(origin.Row, origin.Column)?.StyleIndex?.Value ?? 0 : null;
         if (value is null)
         {
             Clear(row, column, style);
@@ -304,13 +311,17 @@ internal sealed class WorksheetWriter
         cell.CellValue = new X.CellValue(context.Strings.Add(text).ToString(CultureInfo.InvariantCulture));
     }
 
-    /// <summary>The cell, emptied of its value and ready for a new one, with its style replaced when one is given.</summary>
+    /// <summary>
+    /// The cell, emptied of its value and ready for a new one, with its style replaced when one is given. A cell that did not exist gets
+    /// the style it showed (its row's or column's).
+    /// </summary>
     private X.Cell Prepare(int row, int column, uint? style)
     {
         CheckChange(row, column);
-        var cell = cells.GetOrCreate(row, column);
+        var existing = cells.Get(row, column);
+        var cell = existing ?? cells.GetOrCreate(row, column);
         Empty(cell);
-        SetStyle(cell, style);
+        SetStyle(cell, row, column, existing is null ? style ?? source.Style(row, column) : style);
         context.ValueChanged = true;
         return cell;
     }
@@ -326,16 +337,16 @@ internal sealed class WorksheetWriter
 
         if (cell is null)
         {
-            if (style is > 0)
+            if (style is { } index && index != source.FallbackStyle(row, column))
             {
-                SetStyle(cells.GetOrCreate(row, column), style);
+                SetStyle(cells.GetOrCreate(row, column), row, column, index);
             }
 
             return;
         }
 
         Empty(cell);
-        SetStyle(cell, style);
+        SetStyle(cell, row, column, style);
     }
 
     private void CopyCell(int fromRow, int fromColumn, int row, int column)
@@ -348,11 +359,11 @@ internal sealed class WorksheetWriter
         var original = source.Element(fromRow, fromColumn);
         if (original is null)
         {
-            Clear(row, column, 0);
+            Clear(row, column, source.Style(fromRow, fromColumn));
             return;
         }
 
-        var cell = Prepare(row, column, original.StyleIndex?.Value ?? 0);
+        var cell = Prepare(row, column, source.Style(fromRow, fromColumn));
         cell.DataType = original.DataType?.Value;
         if (original.CellValue is { } value)
         {
@@ -400,20 +411,22 @@ internal sealed class WorksheetWriter
             return;
         }
 
+        // A cell without its own style shows its row's or column's, as the reader reads it.
         var cell = cells.Get(row, column);
-        var current = cell?.StyleIndex?.Value ?? 0;
+        var current = cell?.StyleIndex?.Value ?? source.FallbackStyle(row, column);
         var changed = context.Styles.Apply(current, format, style, multiline);
         if (changed != current)
         {
-            SetStyle(cell ?? cells.GetOrCreate(row, column), changed);
+            SetStyle(cell ?? cells.GetOrCreate(row, column), row, column, changed);
         }
     }
 
-    private static void SetStyle(X.Cell cell, uint? style)
+    /// <summary>Sets a cell's style; style 0 is written explicitly only where the row or column would otherwise give another.</summary>
+    private void SetStyle(X.Cell cell, int row, int column, uint? style)
     {
         if (style is { } index)
         {
-            cell.StyleIndex = index == 0 ? null : index;
+            cell.StyleIndex = index == 0 && source.FallbackStyle(row, column) == 0 ? null : index;
         }
     }
 

@@ -18,9 +18,19 @@ internal sealed class StyleWriter
         ["b", "i", "strike", "condense", "extend", "outline", "shadow", "u", "vertAlign", "sz", "color", "name", "family", "charset", "scheme"];
 
     private readonly WorkbookPart workbookPart;
+    private readonly StyleTable original;
+    private readonly int originalCount;
     private X.Stylesheet? stylesheet;
 
-    public StyleWriter(WorkbookPart workbookPart) => this.workbookPart = workbookPart;
+    /// <param name="workbookPart">The workbook part of the package being written.</param>
+    /// <param name="original">The styles as read, to compare an entry's style with the style its cell has.</param>
+    /// <param name="originalCount">The number of cell styles read; styles added by the writer are not in <paramref name="original"/>.</param>
+    public StyleWriter(WorkbookPart workbookPart, StyleTable original, int originalCount)
+    {
+        this.workbookPart = workbookPart;
+        this.original = original;
+        this.originalCount = originalCount;
+    }
 
     /// <summary>
     /// The style index for a cell whose style is <paramref name="current"/>, after applying a number format (null: unchanged), a style
@@ -28,6 +38,7 @@ internal sealed class StyleWriter
     /// </summary>
     public uint Apply(uint current, NumberFormat? format, CellStyle? style, bool multiline)
     {
+        style = style is null ? null : Changes(style, current);
         if (format is null && style is null && !multiline)
         {
             return current;
@@ -71,6 +82,61 @@ internal sealed class StyleWriter
         formats.AppendChild(xf);
         formats.Count = (uint)(xfs.Count + 1);
         return (uint)xfs.Count;
+    }
+
+    /// <summary>
+    /// The members of <paramref name="wanted"/> that differ from the style <paramref name="current"/> has as read, or null when none
+    /// does: an entry's style as read (every read entry has one) changes nothing, and an edited member changes only itself. A member that
+    /// leaves the value as it is (null, or no fill and no colour state) is never a change. A style the writer added is not compared: every
+    /// member that is set applies.
+    /// </summary>
+    private CellStyle? Changes(CellStyle wanted, uint current)
+    {
+        if (current >= originalCount)
+        {
+            return wanted;
+        }
+
+        var have = original.Style(current);
+        if (wanted == have)
+        {
+            return null;
+        }
+
+        var fill = (wanted.Fill is not null || wanted.NoFill) && (wanted.Fill != have.Fill || wanted.NoFill != have.NoFill);
+        var color = (wanted.TextColor is not null || wanted.AutomaticTextColor)
+            && (wanted.TextColor != have.TextColor || wanted.AutomaticTextColor != have.AutomaticTextColor);
+        FontStyle? font = null;
+        if (wanted.Font is { } f)
+        {
+            var h = have.Font;
+            font = new FontStyle
+            {
+                Name = f.Name is not null && f.Name != h?.Name ? f.Name : null,
+                Size = f.Size is not null && f.Size != h?.Size ? f.Size : null,
+                Bold = f.Bold is not null && f.Bold != h?.Bold ? f.Bold : null,
+                Italic = f.Italic is not null && f.Italic != h?.Italic ? f.Italic : null,
+                Underline = f.Underline is not null && f.Underline != h?.Underline ? f.Underline : null,
+                Strikethrough = f.Strikethrough is not null && f.Strikethrough != h?.Strikethrough ? f.Strikethrough : null,
+            };
+            if (font == new FontStyle())
+            {
+                font = null;
+            }
+        }
+
+        var changes = new CellStyle
+        {
+            Fill = fill ? wanted.Fill : null,
+            NoFill = fill && wanted.NoFill,
+            TextColor = color ? wanted.TextColor : null,
+            AutomaticTextColor = color && wanted.AutomaticTextColor,
+            HorizontalAlignment = wanted.HorizontalAlignment is not null && wanted.HorizontalAlignment != have.HorizontalAlignment ? wanted.HorizontalAlignment : null,
+            VerticalAlignment = wanted.VerticalAlignment is not null && wanted.VerticalAlignment != have.VerticalAlignment ? wanted.VerticalAlignment : null,
+            WrapText = wanted.WrapText is not null && wanted.WrapText != have.WrapText ? wanted.WrapText : null,
+            Font = font,
+        };
+        return changes == new CellStyle() ? null : changes;
     }
 
     private X.Stylesheet Load()
@@ -143,7 +209,7 @@ internal sealed class StyleWriter
     private static void ApplyFont(X.Stylesheet sheet, X.CellFormat xf, CellStyle style)
     {
         var font = style.Font;
-        if (font is null && style.TextColor is null)
+        if (font is null && style.TextColor is null && !style.AutomaticTextColor)
         {
             return;
         }
@@ -191,6 +257,11 @@ internal sealed class StyleWriter
         {
             children.RemoveAll(c => c.LocalName == "color");
             children.Add(new X.Color { Rgb = Argb(color) });
+        }
+        else if (style.AutomaticTextColor)
+        {
+            // Automatic is a font without a colour, never an explicit black (§9.6).
+            children.RemoveAll(c => c.LocalName == "color");
         }
 
         var changed = new X.Font();

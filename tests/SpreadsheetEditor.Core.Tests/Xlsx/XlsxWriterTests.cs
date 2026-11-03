@@ -450,6 +450,15 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
+    public void MovingACardWithPicturesIsNotSupported()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Plants").Row("A1", "Name", "Photo").Row("A2", "Fern").Row("A3", "Rose").Picture("B2", PictureBytes.Png(4, 3));
+
+        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(book.ToBytes(), w => w.Sheets[0].Cards.Reverse()));
+    }
+
+    [TestMethod]
     public void LaterRowValuesOfAMultiRowCardStay()
     {
         var book = new TestWorkbook();
@@ -501,6 +510,69 @@ public sealed class XlsxWriterTests
         Assert.AreEqual("FFAABBCC", font.GetFirstChild<X.Color>()!.Rgb!.Value);
         var fill = styles.Fills!.Elements<X.Fill>().ElementAt((int)xf.FillId!.Value);
         Assert.AreEqual("FF112233", fill.PatternFill!.ForegroundColor!.Rgb!.Value);
+    }
+
+    [TestMethod]
+    public void StylesAsReadChangeNothing()
+    {
+        var book = new TestWorkbook();
+        var red = book.AddStyle(
+            font: new X.Font(new X.Bold(), new X.Color { Rgb = "FFFF0000" }, new X.FontName { Val = "Calibri" }),
+            fill: TestWorkbook.Solid(new X.ForegroundColor { Theme = 4 }),
+            alignment: new X.Alignment { Horizontal = X.HorizontalAlignmentValues.Center });
+        var rowStyle = book.AddNumberFormat(10);
+        book.AddSheet("Plants").Row("A1", "Name", "Colour").Set("A2", "Fern", red).Set("B2", "Green").Row("A3", "Rose").RowStyle(3, rowStyle);
+        var original = book.ToBytes();
+
+        var bytes = Change(original, w => w.Sheets[0].Cards[1].Entries[0].Text = "Tulip");
+
+        using var before = new XlsxPackage(original);
+        using var after = new XlsxPackage(bytes);
+        AssertSameXml(before.WorkbookPart.WorkbookStylesPart!, after.WorkbookPart.WorkbookStylesPart!);
+        Assert.AreEqual(before.Cell("Plants", "A2")!.OuterXml, after.Cell("Plants", "A2")!.OuterXml);
+        // The empty cell B3 still has no element; A3 still has no style of its own and shows the row's, as it did when read.
+        Assert.IsNull(after.Cell("Plants", "B3"));
+        Assert.IsNull(after.Cell("Plants", "A3")!.StyleIndex);
+        Assert.AreEqual(rowStyle, after.Cell("Plants", "A3")!.Parent is X.Row row ? row.StyleIndex!.Value : 0u);
+        Assert.AreEqual("Tulip", after.Text("Plants", "A3"));
+    }
+
+    [TestMethod]
+    public void AValueInAStyledRowGetsTheRowsStyle()
+    {
+        var book = new TestWorkbook();
+        var rowStyle = book.AddNumberFormat(10);
+        book.AddSheet("Plants").Row("A1", "Name", "Share").Row("A2", "Fern").RowStyle(2, rowStyle);
+
+        var bytes = Change(book.ToBytes(), w => w.Sheets[0].Cards[0].Entries[1].Text = "0.5");
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual(rowStyle, after.Cell("Plants", "B2")!.StyleIndex!.Value);
+    }
+
+    [TestMethod]
+    public void AutomaticTextColourIsAFontWithoutColour()
+    {
+        var book = new TestWorkbook();
+        var red = book.AddStyle(font: new X.Font(new X.Bold(), new X.Color { Rgb = "FFFF0000" }, new X.FontName { Val = "Calibri" }));
+        book.AddSheet("Plants").Row("A1", "Name", "Colour").Set("A2", "Fern", red).Set("B2", "Green");
+
+        var bytes = Change(book.ToBytes(), w =>
+        {
+            var entry = w.Sheets[0].Cards[0].Entries[0];
+            Assert.AreEqual(new RgbColor(0xFF, 0, 0), entry.Style!.TextColor);
+            entry.Style = entry.Style with { TextColor = null, AutomaticTextColor = true };
+        });
+
+        using var after = new XlsxPackage(bytes);
+        var styles = after.WorkbookPart.WorkbookStylesPart!.Stylesheet!;
+        var xf = styles.CellFormats!.Elements<X.CellFormat>().ElementAt((int)after.Cell("Plants", "A2")!.StyleIndex!.Value);
+        var font = styles.Fonts!.Elements<X.Font>().ElementAt((int)xf.FontId!.Value);
+        Assert.IsNull(font.GetFirstChild<X.Color>());
+        Assert.IsNotNull(font.GetFirstChild<X.Bold>());
+        var back = Read(bytes).Sheets[0].Cards[0].Entries[0].Style!;
+        Assert.IsTrue(back.AutomaticTextColor);
+        Assert.IsTrue(back.Font!.Bold);
     }
 
     [TestMethod]

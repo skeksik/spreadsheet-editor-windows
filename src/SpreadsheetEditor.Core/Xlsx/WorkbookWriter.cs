@@ -227,7 +227,12 @@ internal sealed class WorkbookWriter
         Reorder(root, sheetList, entries, order, oldIndex, copiedNames);
         CheckVisible(order);
 
-        var context = new WriteContext(culture, system, new SharedStringWriter(workbookPart), new StyleWriter(workbookPart));
+        var sourceStyles = sourceBook.WorkbookStylesPart?.Stylesheet;
+        var styles = new StyleWriter(
+            workbookPart,
+            StyleTable.Read(sourceStyles, sourceBook.ThemePart),
+            sourceStyles?.CellFormats?.Elements<X.CellFormat>().Count() ?? 0);
+        var context = new WriteContext(culture, system, new SharedStringWriter(workbookPart), styles);
         foreach (var plan in plans)
         {
             cancellationToken.ThrowIfCancellationRequested();

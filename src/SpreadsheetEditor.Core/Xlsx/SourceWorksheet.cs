@@ -44,6 +44,12 @@ internal sealed class SourceWorksheet
 
     public CellGrid Grid { get; }
 
+    /// <summary>The style a cell shows as read: its own, else its row's or column's (<see cref="CellGrid.StyleIndex"/>).</summary>
+    public uint Style(int row, int column) => Grid.StyleIndex(row, column);
+
+    /// <summary>The style a cell without its own style shows: its row's or column's, else 0.</summary>
+    public uint FallbackStyle(int row, int column) => Grid.FallbackStyleIndex(row, column);
+
     /// <summary>The cell element at a position, or null.</summary>
     public X.Cell? Element(int row, int column) => elements.GetValueOrDefault(Key(row, column));
 
