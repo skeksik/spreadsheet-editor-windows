@@ -21,7 +21,15 @@ internal sealed class TestWorkbook
         new X.Fill(new X.PatternFill { PatternType = X.PatternValues.Gray125 }),
     ];
 
+    private readonly List<(string Name, string Text, uint? LocalSheetId)> definedNames = [];
+
     public bool Date1904 { get; set; }
+
+    /// <summary>When set, the package has a calculation chain listing cell A1 of the first sheet.</summary>
+    public bool CalculationChain { get; set; }
+
+    /// <summary>Adds a defined name; <paramref name="localSheetId"/> makes it local to the sheet at that index.</summary>
+    public void AddDefinedName(string name, string text, uint? localSheetId = null) => definedNames.Add((name, text, localSheetId));
 
     /// <summary>The style sheet's custom indexed palette, or null for the standard one.</summary>
     public X.IndexedColors? IndexedColors { get; set; }
@@ -103,7 +111,16 @@ internal sealed class TestWorkbook
                 root.AppendChild(new X.WorkbookProperties { Date1904 = true });
             }
             root.AppendChild(sheetList);
+            if (definedNames.Count > 0)
+            {
+                root.AppendChild(new X.DefinedNames(definedNames.Select(n => new X.DefinedName(n.Text) { Name = n.Name, LocalSheetId = n.LocalSheetId })));
+            }
             workbookPart.Workbook = root;
+            if (CalculationChain)
+            {
+                workbookPart.AddNewPart<CalculationChainPart>().CalculationChain =
+                    new X.CalculationChain(new X.CalculationCell { CellReference = "A1", SheetId = 1 });
+            }
 
             var stylesheet = new X.Stylesheet();
             if (customFormats.Count > 0)

@@ -298,4 +298,108 @@ public sealed class FormulaReferencesTests
         Assert.ThrowsExactly<ArgumentNullException>(() => RowShift.Delete(null!, 1, 1));
         Assert.ThrowsExactly<ArgumentException>(() => FormulaReferences.ShiftRows("=A1", Sheet, default));
     }
+
+    // Renaming a sheet
+
+    [TestMethod]
+    [DataRow("=Data!A1", "=Stock!A1")]
+    [DataRow("=data!A1+DATA!$B$2", "=Stock!A1+Stock!$B$2")]
+    [DataRow("=SUM(Data!A1:B5)*2", "=SUM(Stock!A1:B5)*2")]
+    [DataRow("='Data'!A1", "=Stock!A1")]
+    [DataRow("=Data!A:A", "=Stock!A:A")]
+    [DataRow("=Data!3:4", "=Stock!3:4")]
+    [DataRow("=Data!MyName", "=Stock!MyName")]
+    [DataRow("=Data!#REF!", "=Stock!#REF!")]
+    [DataRow("=A1+Other!A1+Datum!A1", "=A1+Other!A1+Datum!A1")]
+    [DataRow("=\"Data!A1\"&Data!A1", "=\"Data!A1\"&Stock!A1")]
+    [DataRow("=Table1[Data]+Data!B2", "=Table1[Data]+Stock!B2")]
+    [DataRow("=[1]Data!A1+Data!A1", "=[1]Data!A1+Stock!A1")]
+    [DataRow("='[1]Data'!A1", "='[1]Data'!A1")]
+    [DataRow("Data!A1", "Stock!A1")]
+    public void RenamesQualifiedReferences(string formula, string expected) =>
+        Assert.AreEqual(expected, FormulaReferences.RenameSheet(formula, Sheet, "Stock"));
+
+    [TestMethod]
+    [DataRow("My stock", "='My stock'!A1")]
+    [DataRow("It's", "='It''s'!A1")]
+    [DataRow("2024", "='2024'!A1")]
+    [DataRow("1st", "='1st'!A1")]
+    [DataRow("A1", "='A1'!A1")]
+    [DataRow("xfd1048576", "='xfd1048576'!A1")]
+    [DataRow("R1C1", "='R1C1'!A1")]
+    [DataRow("R", "='R'!A1")]
+    [DataRow("c", "='c'!A1")]
+    [DataRow("RC", "='RC'!A1")]
+    [DataRow("R12", "='R12'!A1")]
+    [DataRow("TRUE", "='TRUE'!A1")]
+    [DataRow("Sales-2024", "='Sales-2024'!A1")]
+    [DataRow("(draft)", "='(draft)'!A1")]
+    [DataRow(".hidden", "='.hidden'!A1")]
+    [DataRow("Stock_2024", "=Stock_2024!A1")]
+    [DataRow("Stock.Old", "=Stock.Old!A1")]
+    [DataRow("Склад", "=Склад!A1")]
+    [DataRow("ABCD1", "=ABCD1!A1")]
+    [DataRow("Rows", "=Rows!A1")]
+    public void QuotesTheNewNameWhenItNeedsQuotes(string newName, string expected) =>
+        Assert.AreEqual(expected, FormulaReferences.RenameSheet("=Data!A1", Sheet, newName));
+
+    [TestMethod]
+    [DataRow("='My data'!A1", "My data", "Stock", "=Stock!A1")]
+    [DataRow("='It''s'!A1+'it''s'!B2", "It's", "Plain", "=Plain!A1+Plain!B2")]
+    [DataRow("='It''s'!A1", "It's", "It's new", "='It''s new'!A1")]
+    [DataRow("='My data'!A1", "My data", "Your data", "='Your data'!A1")]
+    public void RenamesQuotedReferences(string formula, string oldName, string newName, string expected) =>
+        Assert.AreEqual(expected, FormulaReferences.RenameSheet(formula, oldName, newName));
+
+    [TestMethod]
+    [DataRow("=SUM(Data:Last!A1)", "=SUM(Stock:Last!A1)")]
+    [DataRow("=SUM(First:Data!A1)", "=SUM(First:Stock!A1)")]
+    [DataRow("=SUM(Data:Data!A1)", "=SUM(Stock:Stock!A1)")]
+    [DataRow("=SUM('First:Data'!A1)", "=SUM(First:Stock!A1)")]
+    [DataRow("=SUM('My first:Data'!A1)", "=SUM('My first:Stock'!A1)")]
+    [DataRow("=SUM(First:Last!A1)", "=SUM(First:Last!A1)")]
+    [DataRow("=SUM(Data:Last!Total)", "=SUM(Stock:Last!Total)")]
+    [DataRow("=SUM([1]Data:Last!A1)", "=SUM([1]Data:Last!A1)")]
+    public void RenamesEitherEndOfAReferenceToSeveralSheets(string formula, string expected) =>
+        Assert.AreEqual(expected, FormulaReferences.RenameSheet(formula, Sheet, "Stock"));
+
+    [TestMethod]
+    public void QuotesAReferenceToSeveralSheetsAsAWhole()
+    {
+        Assert.AreEqual("=SUM('My stock:Last'!A1)", FormulaReferences.RenameSheet("=SUM(Data:Last!A1)", Sheet, "My stock"));
+        Assert.AreEqual("=SUM('First:It''s'!A1)", FormulaReferences.RenameSheet("=SUM(First:Data!A1)", Sheet, "It's"));
+    }
+
+    [TestMethod]
+    [DataRow("My stock")]
+    [DataRow("It's")]
+    [DataRow("2024")]
+    [DataRow("A1")]
+    [DataRow("R1C1")]
+    [DataRow("Stock")]
+    [DataRow("Склад")]
+    public void RenamedReferencesReadBackToTheNewName(string name)
+    {
+        var renamed = FormulaReferences.RenameSheet("=SUM(Data!A1:B2)+Data:Last!C3", Sheet, name);
+        var tokens = FormulaTokenizer.Tokenize(renamed).Where(t => t.Kind == FormulaTokenKind.Reference).ToList();
+        Assert.AreEqual(2, tokens.Count, renamed);
+        Assert.AreEqual(name, tokens[0].SheetName, renamed);
+        Assert.AreEqual(name + ":Last", tokens[1].SheetName, renamed);
+    }
+
+    [TestMethod]
+    public void RenameToTheSameNameOrWithoutPrefixesKeepsTheText()
+    {
+        const string Formula = "=SUM(data!A1)+A2";
+        Assert.AreSame(Formula, FormulaReferences.RenameSheet(Formula, Sheet, Sheet));
+        Assert.AreSame(Formula, FormulaReferences.RenameSheet(Formula, "Other", "Stock"));
+        Assert.AreEqual("=SUM(DATA!A1)+A2", FormulaReferences.RenameSheet(Formula, Sheet, "DATA"));
+    }
+
+    [TestMethod]
+    public void RenameRejectsEmptyNames()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => FormulaReferences.RenameSheet("=A1", "", "Stock"));
+        Assert.ThrowsExactly<ArgumentException>(() => FormulaReferences.RenameSheet("=A1", Sheet, ""));
+    }
 }

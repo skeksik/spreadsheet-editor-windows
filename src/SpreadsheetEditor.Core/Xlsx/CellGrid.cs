@@ -14,6 +14,9 @@ internal sealed class CellGrid
 
     public List<MergeRange> Merges { get; } = [];
 
+    /// <summary>The worksheet's shared formula groups and the cells in them.</summary>
+    public SharedFormulaMap SharedFormulas { get; } = new();
+
     public int Count => cells.Count;
 
     public IEnumerable<ReadCell> Cells => cells.Values;
@@ -36,9 +39,13 @@ internal sealed class CellGrid
     /// its column's style, else 0. The order follows how a cell without its own style takes its row's or column's formatting (not
     /// verified against ECMA-376's text).
     /// </summary>
-    public uint StyleIndex(int row, int column)
+    public uint StyleIndex(int row, int column) =>
+        cellStyles.TryGetValue(Key(row, column), out var style) ? style : FallbackStyleIndex(row, column);
+
+    /// <summary>The style a cell without its own <c>s</c> shows: its row's custom style, else its column's style, else 0.</summary>
+    public uint FallbackStyleIndex(int row, int column)
     {
-        if (cellStyles.TryGetValue(Key(row, column), out var style) || rowStyles.TryGetValue(row, out style))
+        if (rowStyles.TryGetValue(row, out var style))
         {
             return style;
         }

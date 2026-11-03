@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using SpreadsheetEditor.Core.Formulas;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
@@ -14,6 +15,17 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// requires loading entire Open XML parts into memory, which can cause an Out of Memory exception … Using the SAX approach, you can
 /// employ an OpenXMLReader to read the XML in the file one element at a time". Only non-empty cells are kept, as <see cref="ReadCell"/>s.
 /// </summary>
+/// <remarks>
+/// <para>Shared formulas (ECMA-376 Part 1 §18.3.1.40, <c>t="shared"</c>): the master cell carries the source, a <c>ref</c> and a
+/// <c>si</c>; the group's other cells carry only the <c>si</c>. Every cell of a group is shown as its own formula (docs/spec.md §9.3):
+/// the master's source translated by the cell's row and column offset from the master (<see cref="FormulaReferences.Translate"/>).
+/// The value stays the cell's cached value. Dependents are resolved after the whole worksheet is read, so the master may be anywhere
+/// on the sheet, inside the table or not, and before or after them; a dependent whose master is missing keeps its cached value and no
+/// formula. The groups are recorded in <see cref="CellGrid.SharedFormulas"/> for the writer.</para>
+/// <para>Array formulas (<c>t="array"</c>) and data tables (<c>t="dataTable"</c>) are not translated: the top-left cell, which carries
+/// the <c>f</c> element, shows its formula text when it has some (a data table's usually has none), and the other cells of the range,
+/// which carry no <c>f</c> element, show their cached value.</para>
+/// </remarks>
 internal sealed class WorksheetCells
 {
     private readonly string[] sharedStrings;
@@ -32,6 +44,7 @@ internal sealed class WorksheetCells
     public CellGrid Read(WorksheetPart part, CancellationToken cancellationToken)
     {
         var grid = new CellGrid();
+        var dependents = new List<PendingCell>();
         var row = 0;
         var column = 0;
         var rowsRead = 0;
@@ -45,7 +58,7 @@ internal sealed class WorksheetCells
             {
                 if (type == typeof(X.Row))
                 {
-                    Commit(grid, ref cell);
+                    Commit(grid, dependents, ref cell);
                     row = int.TryParse(Attribute(reader, "r"), NumberStyles.None, CultureInfo.InvariantCulture, out var r) ? r : row + 1;
                     column = 0;
                     if (Attribute(reader, "customFormat") is "1" or "true" && UInt(Attribute(reader, "s")) is { } rowStyle)
@@ -59,7 +72,7 @@ internal sealed class WorksheetCells
                 }
                 else if (type == typeof(X.Cell))
                 {
-                    Commit(grid, ref cell);
+                    Commit(grid, dependents, ref cell);
                     if (CellReference.TryParse(Attribute(reader, "r"), out var c, out var r))
                     {
                         column = c;
@@ -83,8 +96,13 @@ internal sealed class WorksheetCells
                 }
                 else if (cell is not null && type == typeof(X.CellFormula))
                 {
+                    if (Attribute(reader, "t") == "shared" && UInt(Attribute(reader, "si")) is { } index)
+                    {
+                        cell.SharedIndex = index;
+                        cell.SharedRange = Attribute(reader, "ref");
+                    }
                     var formula = reader.GetText();
-                    // A shared formula's other cells carry no text; until it is translated to each cell they keep their cached value.
+                    // A shared formula's other cells carry no text: they are given the master's formula once the sheet is read.
                     cell.Formula = string.IsNullOrEmpty(formula) ? null : formula;
                 }
                 else if (cell is not null && type == typeof(X.PhoneticRun))
@@ -122,15 +140,16 @@ internal sealed class WorksheetCells
                 }
                 else if (type == typeof(X.Cell) || type == typeof(X.SheetData))
                 {
-                    Commit(grid, ref cell);
+                    Commit(grid, dependents, ref cell);
                 }
             }
         }
-        Commit(grid, ref cell);
+        Commit(grid, dependents, ref cell);
+        ResolveDependents(grid, dependents);
         return grid;
     }
 
-    private void Commit(CellGrid grid, ref PendingCell? cell)
+    private void Commit(CellGrid grid, List<PendingCell> dependents, ref PendingCell? cell)
     {
         if (cell is null)
         {
@@ -138,6 +157,37 @@ internal sealed class WorksheetCells
         }
         var pending = cell;
         cell = null;
+        if (pending.SharedIndex is { } index)
+        {
+            if (pending.Formula is null)
+            {
+                grid.SharedFormulas.AddCell(pending.Row, pending.Column, new SharedFormulaCell(index, false));
+                dependents.Add(pending);
+                return;
+            }
+            // The first cell with text is the master; another cell with text and the same si keeps its own text (not expected).
+            var isMaster = grid.SharedFormulas.TryAddGroup(
+                new SharedFormulaGroup(index, pending.Row, pending.Column, pending.SharedRange, pending.Formula));
+            grid.SharedFormulas.AddCell(pending.Row, pending.Column, new SharedFormulaCell(index, isMaster));
+        }
+        Add(grid, pending);
+    }
+
+    /// <summary>Gives each dependent its master's formula, translated to the dependent's position; without a master, its cached value.</summary>
+    private void ResolveDependents(CellGrid grid, List<PendingCell> dependents)
+    {
+        foreach (var pending in dependents)
+        {
+            if (grid.SharedFormulas.Group(pending.SharedIndex!.Value) is { } group)
+            {
+                pending.Formula = FormulaReferences.Translate(group.Source, pending.Row - group.MasterRow, pending.Column - group.MasterColumn);
+            }
+            Add(grid, pending);
+        }
+    }
+
+    private void Add(CellGrid grid, PendingCell pending)
+    {
         string? text = pending.Type switch
         {
             "s" => SharedString(pending.Raw),
@@ -187,6 +237,12 @@ internal sealed class WorksheetCells
         public string? Raw { get; set; }
 
         public string? Formula { get; set; }
+
+        /// <summary>The <c>si</c> of a shared formula's <c>f</c> element, or null when the cell is not in a shared formula group.</summary>
+        public uint? SharedIndex { get; set; }
+
+        /// <summary>A shared formula master's <c>ref</c>.</summary>
+        public string? SharedRange { get; set; }
 
         public StringBuilder? Inline { get; set; }
     }
