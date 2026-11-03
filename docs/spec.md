@@ -1018,8 +1018,11 @@ Each item states the intended behaviour (**Intended**), the owner's answer (**De
 11. **`.xls`** is offered but always fails. Q: support `.xls` reading (saving to `.xlsx`), or remove it from the filter and the drop targets?
 12. **Chart sheets** or other non-grid sheets may make the whole load fail. **Intended:** skip and preserve them.
 13. **Failed load clears the open document**, because tabs are removed before parsing. **Intended:** parse first, then replace the document only on success.
-14. **CSV with only a header gives a sheet with zero cards.** Q: create one empty card, matching the "at least one card" rule?
-15. **CSV encoding and delimiter** are fixed at UTF-8 and comma. Q: detect a BOM, other encodings and `;` delimiters?
+14. **CSV with only a header gives a sheet with zero cards.** **Decided (owner, 2026-11-03):** such a file opens with one empty card, matching the "at least one card" rule. Saving it without typing anything writes the header line alone.
+15. **CSV encoding and delimiter** are fixed at UTF-8 and comma. **Decided (owner, 2026-11-03):**
+   - The separator is detected from the header line: comma, semicolon or tab (the exact rule is the CSV task's to propose).
+   - Encodings: UTF-8 with or without a BOM, and UTF-16 with a BOM. No legacy code pages.
+   - Saving a sheet read from a `.csv` keeps that file's separator and encoding; other sheets are exported as section 5.9 says.
 
 ### File writing
 
@@ -1043,10 +1046,10 @@ Each item states the intended behaviour (**Intended**), the owner's answer (**De
 31. **Tab order does not change sheet order in the saved workbook**, and dragging tabs does not mark the document modified. **Intended:** saved sheet order follows tab order, and reordering tabs marks the document modified.
 32. **Duplicate sheet uses the table name as loaded**, not the edited one. **Intended:** use the current field text.
 33. **Removing every entry is allowed**, and saving then fails. **Intended:** the Remove Entries dialog cannot remove the last entry. Its OK button is disabled when every entry is checked.
-34. **CSV export writes the first sheet, not the selected one**, writes `0,1,2,…` as the header for sheets with hidden headers, and marks the whole document saved. Q:
-    - export the selected sheet?
-    - omit the header line for sheets with hidden headers?
-    - keep the modified flag when other sheets were not written?
+34. **CSV export writes the first sheet, not the selected one**, writes `0,1,2,…` as the header for sheets with hidden headers, and marks the whole document saved. **Decided (owner, 2026-11-03):**
+    - export the selected sheet;
+    - omit the header line for a sheet with hidden headers;
+    - the document stays modified when it has other sheets that were not written.
 35. **The `.csv` check on save is case-sensitive** (`X.CSV` gets `.xlsx` content). **Intended:** decide the format by case-insensitive extension, or by the chosen filter when there is no extension.
 
 ### Editing
