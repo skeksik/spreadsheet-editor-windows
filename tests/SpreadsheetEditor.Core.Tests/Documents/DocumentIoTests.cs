@@ -205,6 +205,18 @@ public sealed class DocumentIoTests
         Assert.AreEqual("Sheet1", XlsxReader.Read(target, Invariant).Sheets[0].Name);
     }
 
+    [TestMethod]
+    public async Task AnUntouchedNewDocumentReopensWithItsSheet()
+    {
+        var created = DocumentIo.New("Sheet");
+        var target = InFolder("untouched.xlsx");
+
+        await DocumentIo.SaveAsync(created.Workbook, null, created.File, target, FileFormat.Xlsx, Invariant);
+        var reopened = await DocumentIo.OpenAsync(target, Invariant);
+
+        Assert.AreEqual("Sheet1", reopened.Workbook.Sheets.Single().Name);
+    }
+
     private string InFolder(string name) => Path.Combine(folder.FullName, name);
 
     private async Task<Core.Documents.OpenedDocument> OpenPlants()
