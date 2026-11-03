@@ -5,19 +5,26 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// <summary>Builds a <see cref="Sheet"/> from a worksheet's cells: its table, entries, cards and picture layout (docs/spec.md §4.1–4.5).</summary>
 internal static class SheetBuilder
 {
-    /// <summary>The sheet, or null when the worksheet has no table (no occupied cell).</summary>
+    /// <summary>
+    /// The sheet. A worksheet without a table (no occupied cell outside the metadata column) gives a new sheet's defaults with the picture
+    /// layout of its metadata cells (docs/spec.md §2.3, §9.10).
+    /// </summary>
     /// <param name="name">The worksheet's name.</param>
     /// <param name="relationshipId">The workbook part's relationship id of the worksheet part.</param>
     /// <param name="sheetId">The worksheet's <c>sheetId</c>.</param>
     /// <param name="grid">The worksheet's cells, merges and style indexes.</param>
     /// <param name="styles">The workbook's cell styles.</param>
     /// <param name="pictures">The pictures anchored to the worksheet's cells, in file order.</param>
-    public static Sheet? Build(string name, string relationshipId, uint sheetId, CellGrid grid, StyleTable styles, IReadOnlyList<AnchoredPicture> pictures)
+    public static Sheet Build(string name, string relationshipId, uint sheetId, CellGrid grid, StyleTable styles, IReadOnlyList<AnchoredPicture> pictures)
     {
+        var layout = LayoutMetadata.Read(
+            grid.Get(1, CellReference.MaxColumn)?.PlainText,
+            grid.Get(2, CellReference.MaxColumn)?.PlainText,
+            grid.Get(3, CellReference.MaxColumn)?.PlainText);
         var table = TableDetector.Detect(grid, pictures.Select(p => (p.Row, p.Column)));
         if (table is null)
         {
-            return null;
+            return BuildEmpty(name, relationshipId, sheetId, grid, layout);
         }
 
         var sheet = new Sheet(name)
@@ -27,10 +34,7 @@ internal static class SheetBuilder
             FirstColumn = table.FirstColumn,
             HeaderRow = table.HeadersHidden ? null : table.HeaderRow,
             FirstDataRow = table.FirstDataRow,
-            ImageLayout = LayoutMetadata.Read(
-                grid.Get(1, CellReference.MaxColumn)?.PlainText,
-                grid.Get(2, CellReference.MaxColumn)?.PlainText,
-                grid.Get(3, CellReference.MaxColumn)?.PlainText),
+            ImageLayout = layout,
         };
 
         for (var column = table.FirstColumn; column <= table.LastColumn; column++)
@@ -69,6 +73,21 @@ internal static class SheetBuilder
         }
 
         sheet.Source = new SheetSource(relationshipId, sheetId, table.FirstRow, lastRow, table.FirstColumn, table.LastColumn) { SharedFormulas = grid.SharedFormulas };
+        return sheet;
+    }
+
+    /// <summary>
+    /// A new sheet's defaults (§2.3): one unnamed entry and one empty card, headers shown, no table name, the table at A1. The source marks
+    /// the worksheet as empty, so that a save without edits leaves it as it was read (§9.10).
+    /// </summary>
+    private static Sheet BuildEmpty(string name, string relationshipId, uint sheetId, CellGrid grid, ImageLayout layout)
+    {
+        var sheet = new Sheet(name) { ImageLayout = layout };
+        sheet.Columns.Add(new Column(""));
+        var card = new Card();
+        card.Entries.Add(new Entry());
+        sheet.Cards.Add(card);
+        sheet.Source = new SheetSource(relationshipId, sheetId, 1, 1, 1, 1) { SharedFormulas = grid.SharedFormulas, EmptyLayout = layout };
         return sheet;
     }
 

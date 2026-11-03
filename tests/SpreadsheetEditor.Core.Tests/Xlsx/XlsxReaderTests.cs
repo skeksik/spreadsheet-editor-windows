@@ -23,8 +23,8 @@ public sealed class XlsxReaderTests
         return sheets[0];
     }
 
-    private static readonly string[] ExpectedSheetNames = ["First", "Last"];
-    private static readonly string[] ExpectedSkippedSheetNames = ["Empty", "Chart", "Only metadata"];
+    private static readonly string[] ExpectedSheetNames = ["First", "Empty", "Only metadata", "Last"];
+    private static readonly string[] ExpectedSkippedSheetNames = ["Chart"];
     private static readonly byte[] Garbage = [1, 2, 3, 4, 5];
     private static readonly byte[] CompoundFileHeader = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0];
 
@@ -414,7 +414,7 @@ public sealed class XlsxReaderTests
     }
 
     [TestMethod]
-    public void SkipsEmptyAndChartSheetsAndKeepsOrder()
+    public void ReadsEmptyWorksheetsSkipsChartSheetsAndKeepsOrder()
     {
         var book = new TestWorkbook();
         book.AddSheet("First").Row("A1", "A");
@@ -426,9 +426,94 @@ public sealed class XlsxReaderTests
         var workbook = Read(book);
 
         CollectionAssert.AreEqual(ExpectedSheetNames, workbook.Sheets.Select(s => s.Name).ToArray());
-        Assert.AreEqual(5u, workbook.Sheets[1].Source!.SheetId);
-        Assert.AreNotEqual(workbook.Sheets[0].Source!.RelationshipId, workbook.Sheets[1].Source!.RelationshipId);
+        Assert.AreEqual(5u, workbook.Sheets[3].Source!.SheetId);
+        Assert.AreNotEqual(workbook.Sheets[0].Source!.RelationshipId, workbook.Sheets[3].Source!.RelationshipId);
         CollectionAssert.AreEqual(ExpectedSkippedSheetNames, workbook.SkippedSheetNames);
+    }
+
+    [TestMethod]
+    public void EmptyWorksheetOpensWithANewSheetsDefaults()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Empty").Empty("C3").Width(1, 2, 20).Merge("D4:E5");
+
+        var sheet = ReadSingle(book);
+
+        AssertNames(sheet, "");
+        Assert.AreEqual(1, sheet.Cards.Count);
+        AssertTexts(sheet.Cards[0], "");
+        Assert.IsNull(sheet.Cards[0].Entries[0].Original);
+        Assert.IsNull(sheet.Cards[0].Entries[0].Style);
+        Assert.IsNull(sheet.TableName);
+        Assert.AreEqual((1, 1, 1, 2), (sheet.TableNameColumn, sheet.FirstColumn, sheet.HeaderRow, sheet.FirstDataRow));
+        Assert.AreEqual(ImageLayout.Default, sheet.ImageLayout);
+        Assert.IsTrue(sheet.Source!.IsEmpty);
+        Assert.IsTrue(sheet.Source.IsUntouchedEmpty(sheet));
+    }
+
+    [TestMethod]
+    public void WorksheetWithOnlyMetadataOpensWithItsLayout()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("S").Set("XFD1", "ImageHeight:200").Set("XFD2", "ExcelImagesPerRow:3").Set("XFD3", "ImageWidth:150");
+
+        var sheet = ReadSingle(book);
+
+        AssertNames(sheet, "");
+        AssertTexts(sheet.Cards[0], "");
+        Assert.AreEqual(new ImageLayout(150, 200, 3), sheet.ImageLayout);
+        Assert.AreEqual(sheet.ImageLayout, sheet.Source!.EmptyLayout);
+    }
+
+    [TestMethod]
+    public void EmptyWorksheetMetadataIsClamped()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("S").Set("XFD1", "ImageHeight:5000");
+
+        var sheet = ReadSingle(book);
+
+        Assert.AreEqual(PictureLimits.MaxHeight, sheet.ImageLayout.Height);
+        Assert.IsTrue(sheet.Source!.IsUntouchedEmpty(sheet));
+    }
+
+    [TestMethod]
+    public void EditedEmptySheetIsNoLongerUntouched()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("S");
+        var sheet = ReadSingle(book);
+        var source = sheet.Source!;
+
+        sheet.Cards[0].Entries[0].Text = "x";
+        Assert.IsFalse(source.IsUntouchedEmpty(sheet), "text");
+        sheet.Cards[0].Entries[0].Text = "";
+        Assert.IsTrue(source.IsUntouchedEmpty(sheet), "text undone");
+        sheet.Columns[0].Name = "Name";
+        Assert.IsFalse(source.IsUntouchedEmpty(sheet), "entry name");
+        sheet.Columns[0].Name = "";
+        sheet.ImageLayout = sheet.ImageLayout with { Height = 200 };
+        Assert.IsFalse(source.IsUntouchedEmpty(sheet), "layout");
+        sheet.ImageLayout = ImageLayout.Default;
+        sheet.TableName = "Table";
+        Assert.IsFalse(source.IsUntouchedEmpty(sheet), "table name");
+        sheet.TableName = null;
+        sheet.Cards.Add(new Card { Entries = { new Entry() } });
+        Assert.IsFalse(source.IsUntouchedEmpty(sheet), "card added");
+    }
+
+    [TestMethod]
+    public void HiddenEmptyWorksheetOpensAsATab()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Shown").Row("A1", "A").Row("A2", "x");
+        book.AddSheet("Hidden", hidden: true);
+
+        var workbook = Read(book);
+
+        Assert.AreEqual("Shown|Hidden", string.Join('|', workbook.Sheets.Select(s => s.Name)));
+        Assert.IsTrue(workbook.Sheets[1].Source!.IsEmpty);
+        Assert.AreEqual(0, workbook.SkippedSheetNames.Count);
     }
 
     [TestMethod]
