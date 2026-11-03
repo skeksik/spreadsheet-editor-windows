@@ -12,7 +12,15 @@ internal sealed class TestWorkbook
     private readonly List<(uint Id, string Code)> customFormats = [];
     private readonly List<uint> cellFormats = [0];
 
+    private readonly List<(string Name, string Text, uint? LocalSheetId)> definedNames = [];
+
     public bool Date1904 { get; set; }
+
+    /// <summary>When set, the package has a calculation chain listing cell A1 of the first sheet.</summary>
+    public bool CalculationChain { get; set; }
+
+    /// <summary>Adds a defined name; <paramref name="localSheetId"/> makes it local to the sheet at that index.</summary>
+    public void AddDefinedName(string name, string text, uint? localSheetId = null) => definedNames.Add((name, text, localSheetId));
 
     /// <summary>Adds a worksheet; a hidden one has <c>state="hidden"</c> in the workbook's sheet list.</summary>
     public TestSheet AddSheet(string name, bool hidden = false)
@@ -55,7 +63,18 @@ internal sealed class TestWorkbook
                 root.AppendChild(new X.WorkbookProperties { Date1904 = true });
             }
             root.AppendChild(sheetList);
+            if (definedNames.Count > 0)
+            {
+                root.AppendChild(new X.DefinedNames(definedNames.Select(n => new X.DefinedName(n.Text) { Name = n.Name, LocalSheetId = n.LocalSheetId })));
+            }
+
             workbookPart.Workbook = root;
+            if (CalculationChain)
+            {
+                workbookPart.AddNewPart<CalculationChainPart>().CalculationChain =
+                    new X.CalculationChain(new X.CalculationCell { CellReference = "A1", SheetId = 1 });
+            }
+
 
             var stylesheet = new X.Stylesheet();
             if (customFormats.Count > 0)
@@ -89,6 +108,7 @@ internal sealed class TestWorkbook
                 {
                     var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
                     worksheetPart.Worksheet = sheet.ToWorksheet();
+                    sheet.AddParts(worksheetPart);
                     part = worksheetPart;
                 }
                 var entry = new X.Sheet { Id = workbookPart.GetIdOfPart(part), SheetId = sheetId++, Name = name };
