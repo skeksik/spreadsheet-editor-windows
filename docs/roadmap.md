@@ -26,17 +26,23 @@ references are to `docs/spec.md`.
       grouping by table merges only (§4.3, §9.7), theme and indexed colours with tint and automatic text colour (§4.4, §9.5–9.6),
       fonts and alignment, pictures anchored to cells, layout metadata clamped (§4.5, §9.50); unsupported sheets skipped and kept
       (§9.10, §9.12), hidden worksheets read (§9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's
-      text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets), then
-      `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
+      text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets; #9,
+      merged), then `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
+- [ ] `feat/formula-references`: pure functions over formula text: shift the references when worksheet rows are inserted or
+      deleted (absolute and relative, ranges, whole rows and columns, other sheets' references, `#REF!` for deleted cells; text in
+      quotes untouched), and translate a formula by a row and column offset for shared formulas. Used by the writer (§9.20) and
+      `feat/xlsx-shared-formulas`. Core only, with tests.
 - [ ] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
       its references shifted), instead of their cached value (§9.3). Until then such cells show their value and are written back
-      untouched unless edited. Depends on `feat/xlsx-read`.
-- [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
+      untouched unless edited. Depends on `feat/xlsx-read` and `feat/formula-references`.
+- [ ] `feat/xlsx-write`, in two PRs. Part A (`feat/xlsx-write`): values, sheets and clearing, with cards over their source rows;
+      part B (`feat/xlsx-write-rows`): row insertion and deletion, the name row, pictures, row heights and column widths. Together
+      they write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
       merges, row heights, column widths, pictures with source-rectangle crop, print area (§9.27), metadata column; a new workbook
       from an empty package; repeatable saves (§9.21). Round-trip tests. Depends on `feat/xlsx-read`, `feat/cell-values` and
-      `feat/picture-layout`.
+      `feat/picture-layout`; part B also on `feat/formula-references`.
 - [x] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35): separator and encoding detected and kept,
       one empty card for a header-only file, export of one given sheet, round-trip tests.
 - [x] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
@@ -44,7 +50,9 @@ references are to `docs/spec.md`.
       orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
 
 ## M2: Editing in the core (cloud)
-- [ ] `feat/editing-ops`: operations on the model with undo and redo: cards (add above/below/end, duplicate, remove, move), entries
+- [ ] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`): the undo and redo stack, card and entry operations and the
+      modified flag; part 2 (`feat/editing-ops-values`): values, sheets, table name and picture layout. Operations on the model
+      with undo and redo: cards (add above/below/end, duplicate, remove, move), entries
       (add, remove by identity, reorder, rename; never the last one, §9.33, §9.36–9.38), values (text, fill, text colour incl.
       automatic, pictures add/remove/reorder), sheets (add, rename in place, duplicate, remove, reorder, §9.30–9.32), table name,
       picture layout. Row spans belong to cards (§9.22). Modified flag (§8.1). Tests.
