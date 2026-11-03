@@ -238,14 +238,14 @@ checks of 01, `=TEXT(B2,"yyyy-mm-dd hh:mm:ss")`). Pictures were looked at on scr
 
 | File | Opens without repair | Matches the list | Notes (what differed) |
 |---|---|---|---|
-| 00-control.xlsx | **No**: error dialog, see below | Not checked (did not open) | Rerun needed after `test/excel-check-pictures`. Fails because of the test builders' picture, not the writer: see below. A copy that changes only that picture's `spPr` opens, and matches the list |
+| 00-control.xlsx | Yes (rerun) | Yes (rerun) | **Rerun 2026-11-03, after `test/excel-check-pictures`, Excel for the web build 16.0.20626.42304:** opens with no dialog. Sheets, A1:B6, B20 15, D20:E20 merged, A24 yellow, picture 0 at G2, Report B2 15, B3 1, B4 15 and the Check sheet as listed. Picture 0 looks wider than tall, as in the first run (not part of the check). First run: the error dialog below, caused by the test builders' empty `spPr` |
 | 01-values.xlsx | Yes | Yes | Every row's type as listed. B10 shows 43, so Excel recalculated. B11's number format is Text. Dates show `########` in the narrow column B; their values are 2024-03-15 00:00, 2024-03-15 14:30, 14:30 and 2023-03-15 |
 | 02-styles.xlsx | Yes | Yes | B5 is shown in the default black, not red. Excel for the web's formatting pane does not show a cell's font colour, so "Automatic" could not be read there. B8 is wrapped, top-aligned, three lines in the formula bar; row 8 is not grown, so only `line one` shows (allowed by the list) |
 | 03-cards.xlsx | Yes | Yes | Name Manager shows CardTotal as `Cards B21:B21`; the file holds `Cards!$B$21`. It also lists print areas Report `A1:B4` and Check `A1:A3`, which the writer adds by design (spec §5.7, §9.27). The Check sheet was not looked at |
 | 04-table-name.xlsx | Yes | Yes | |
 | 05-shared-formulas.xlsx | Yes | Yes | |
 | 06-sheets.xlsx | Yes | Yes | Column G is about 210 px. Both Garden plants sheets: Landscape, margins top and bottom 0.75", left and right 0.5". Their print areas are `A1:B3`, so column G is not printed (by design, §9.27) |
-| 07-pictures.xlsx | **No**: error dialog, see below | Not checked (did not open) | Rerun needed after `test/excel-check-pictures`. Fails because of picture 0 at H2, which is kept from the test builders' source. A copy that changes only that picture's `spPr` opens. In that copy: layout, sizes, merges, B10 and B22 (`=COUNTA(A2:A10)`, 8) as listed, all rings round, **but a thin red line shows at every cropped edge**: see below |
+| 07-pictures.xlsx | Yes (rerun) | Yes (rerun) | **Rerun 2026-11-03, after `test/excel-check-pictures`, Excel for the web build 16.0.20626.42304:** opens with no dialog. Pictures in B2–B6, C7 (two rows, gap at the right), C8:C9 (1–13, four per row, 13 alone in row 9) and H2 (picture 0) as listed; A8:A9, B8:B9, C8:C9 merged; B10 empty; B22 `=COUNTA(A2:A10)`, 8. Big pictures: 1 and 2 in B2 and B3, A2:A3 and B2:B3 merged, A4 `After`. All rings round. **No red at any edge**, and no grey line visible either, at 100 % and 140 % zoom, seen by Claude and by the owner. Column B shows as 27.14 (195 px) in Column Width; the file holds 27.857. Row heights were not measured. First run: the error dialog below, and red lines at the cropped edges in a copy that opened |
 | 08-new-workbook.xlsx | Yes | Yes | Picture round, no red. Check has A1 and A2 only, as this file's list says |
 | 09-jpeg-orientation.xlsx | Yes | Yes | **B3 looks like B2**: Excel for the web ignores EXIF orientation. B3's JPEG does carry orientation 6. See `jpeg-orientation.md` |
 | 10-table-ends.xlsx | Yes | Yes | |
@@ -301,4 +301,4 @@ remarks of the Open XML SDK's `SourceRectangle` class, https://learn.microsoft.c
 read 2026-11-03). The section number (§20.1.8.55 in that edition) is not verified: the page does not give it and the standard was not
 read. Instead, `test/excel-check-pictures` changed the check pictures: a light grey band 2 source pixels wide now lies between the kept
 region and the red, so a correct crop shows at most a thin grey line, while a crop off by more than about 2 px still shows red. Rerun
-needed.
+on 2026-11-03: no red at any cropped edge (row 07 of the table).
