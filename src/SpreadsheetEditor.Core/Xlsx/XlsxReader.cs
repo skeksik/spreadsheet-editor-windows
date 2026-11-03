@@ -82,11 +82,12 @@ public static class XlsxReader
     {
         CheckSignature(bytes);
         List<Sheet> sheets;
+        var skipped = new List<string>();
         try
         {
             using var stream = new MemoryStream(bytes, writable: false);
             using var document = SpreadsheetDocument.Open(stream, false);
-            sheets = ReadSheets(document, culture, cancellationToken);
+            sheets = ReadSheets(document, culture, skipped, cancellationToken);
         }
         catch (Exception ex) when (ex is not (SpreadsheetReadException or OperationCanceledException or OutOfMemoryException))
         {
@@ -95,6 +96,7 @@ public static class XlsxReader
         }
         var workbook = new Workbook { Source = new XlsxSource(bytes) };
         workbook.Sheets.AddRange(sheets);
+        workbook.SkippedSheetNames.AddRange(skipped);
         return workbook;
     }
 
@@ -114,7 +116,9 @@ public static class XlsxReader
         throw new SpreadsheetReadException(SpreadsheetReadError.NotAnXlsx, "The file is not an Excel workbook (.xlsx).");
     }
 
-    private static List<Sheet> ReadSheets(SpreadsheetDocument document, CultureInfo culture, CancellationToken cancellationToken)
+    /// <summary>Reads the sheets that hold a table; adds the names of the others to <paramref name="skipped"/>.</summary>
+    private static List<Sheet> ReadSheets(
+        SpreadsheetDocument document, CultureInfo culture, List<string> skipped, CancellationToken cancellationToken)
     {
         var workbookPart = document.WorkbookPart
             ?? throw new InvalidDataException("The package has no workbook part.");
@@ -135,6 +139,7 @@ public static class XlsxReader
             // Chart sheets, dialog sheets and macro sheets are not grid worksheets: skipped, and kept as they are in the package (§9.12).
             if (id is null || FindPart(workbookPart, id) is not WorksheetPart part)
             {
+                Skip(entry, skipped);
                 continue;
             }
             var grid = cells.Read(part, cancellationToken);
@@ -143,11 +148,20 @@ public static class XlsxReader
             if (sheet is null)
             {
                 // No occupied cell: no tab, and the worksheet stays untouched in the package (§9.10).
+                Skip(entry, skipped);
                 continue;
             }
             sheets.Add(sheet);
         }
         return sheets;
+    }
+
+    private static void Skip(X.Sheet entry, List<string> skipped)
+    {
+        if (entry.Name?.Value is { Length: > 0 } name)
+        {
+            skipped.Add(name);
+        }
     }
 
     private static OpenXmlPart? FindPart(WorkbookPart workbookPart, string relationshipId)

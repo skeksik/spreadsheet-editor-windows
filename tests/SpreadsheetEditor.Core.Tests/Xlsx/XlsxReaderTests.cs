@@ -24,6 +24,7 @@ public sealed class XlsxReaderTests
     }
 
     private static readonly string[] ExpectedSheetNames = ["First", "Last"];
+    private static readonly string[] ExpectedSkippedSheetNames = ["Empty", "Chart", "Only metadata"];
     private static readonly byte[] Garbage = [1, 2, 3, 4, 5];
     private static readonly byte[] CompoundFileHeader = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0];
 
@@ -426,6 +427,7 @@ public sealed class XlsxReaderTests
         CollectionAssert.AreEqual(ExpectedSheetNames, workbook.Sheets.Select(s => s.Name).ToArray());
         Assert.AreEqual(5u, workbook.Sheets[1].Source!.SheetId);
         Assert.AreNotEqual(workbook.Sheets[0].Source!.RelationshipId, workbook.Sheets[1].Source!.RelationshipId);
+        CollectionAssert.AreEqual(ExpectedSkippedSheetNames, workbook.SkippedSheetNames);
     }
 
     [TestMethod]
@@ -440,6 +442,7 @@ public sealed class XlsxReaderTests
         Assert.AreEqual(2, workbook.Sheets.Count);
         Assert.AreEqual("Hidden", workbook.Sheets[1].Name);
         AssertTexts(workbook.Sheets[1].Cards[0], "y");
+        Assert.AreEqual(0, workbook.SkippedSheetNames.Count, "hidden worksheets are shown, not skipped");
     }
 
     [TestMethod]
