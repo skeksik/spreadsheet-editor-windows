@@ -1,8 +1,8 @@
 <Window
     x:Class="SpreadsheetEditor.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Spreadsheet Editor">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Every string comes from Strings/<lang>/Resources.resw: x:Uid here, Services.Strings in code (the window and title bar titles). -->
     <Window.SystemBackdrop>
         <MicaBackdrop Kind="Base" />
     </Window.SystemBackdrop>
@@ -14,7 +14,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="Spreadsheet Editor">
+        <TitleBar x:Name="AppTitleBar">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.png" />
             </TitleBar.IconSource>
@@ -22,8 +22,8 @@
 
         <!-- The File menu grows with docs/roadmap.md (open, save, save as, recent files). -->
         <MenuBar Grid.Row="1">
-            <MenuBarItem Title="File">
-                <MenuFlyoutItem Text="Exit" Click="OnExitClick" />
+            <MenuBarItem x:Uid="MainWindow_FileMenu">
+                <MenuFlyoutItem x:Uid="MainWindow_ExitItem" Click="OnExitClick" />
             </MenuBarItem>
         </MenuBar>
 
@@ -35,11 +35,11 @@
             VerticalAlignment="Center"
             Spacing="8">
             <FontIcon HorizontalAlignment="Center" FontSize="48" Glyph="&#xE9F9;" />
-            <TextBlock HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" Text="No spreadsheet open" />
+            <TextBlock x:Uid="MainWindow_EmptyTitle" HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock
+                x:Uid="MainWindow_EmptyHint"
                 HorizontalAlignment="Center"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Open an .xlsx or .csv file to edit its rows as cards." />
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
     </Grid>
 </Window>

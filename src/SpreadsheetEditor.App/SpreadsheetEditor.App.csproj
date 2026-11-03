@@ -22,6 +22,10 @@
     <SelfContained>true</SelfContained>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- The PRI file's default language: English is the fallback for a string or display language the app does not have
+         (docs/notes/localisation.md). It is also the build tools' default (Microsoft.Windows.SDK.BuildTools.MSIX 1.7.251221100,
+         MrtCore.PriGen.targets), which also adds every Strings/<lang>/Resources.resw as a PRIResource item (Common.props). -->
+    <DefaultLanguage>en-US</DefaultLanguage>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using SpreadsheetEditor.App.Services;
 
 namespace SpreadsheetEditor.App;
 
@@ -10,6 +11,10 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Window is not a DependencyObject, so x:Uid cannot set its title (not verified); the title bar shows the same text. With a
+        // document open the title becomes WindowTitleWithFile, "{file} - Spreadsheet Editor" (spec §10.8, feat/app-document).
+        Title = Strings.Get("AppDisplayName");
+        AppTitleBar.Title = Title;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
