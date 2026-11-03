@@ -28,4 +28,7 @@ public sealed class Sheet
     public List<Card> Cards { get; } = [];
 
     public ImageLayout ImageLayout { get; set; } = ImageLayout.Default;
+
+    /// <summary>Where the table was in the worksheet it was read from, for the writer; null for a sheet not read from <c>.xlsx</c>.</summary>
+    internal Xlsx.SheetSource? Source { get; set; }
 }
