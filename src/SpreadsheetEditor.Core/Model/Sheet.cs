@@ -29,6 +29,12 @@ public sealed class Sheet
 
     public ImageLayout ImageLayout { get; set; } = ImageLayout.Default;
 
+    /// <summary>
+    /// Width over height, captured when the user turned the aspect lock on (docs/spec.md §2.8), or null while it is off. Kept in memory
+    /// only: never saved and not undoable (§8.1; whether to save it is open, §9.51). Set through <see cref="Editing.WorkbookEditor.SetAspectLock"/>.
+    /// </summary>
+    public double? LockedAspectRatio { get; internal set; }
+
     /// <summary>Where the table was in the worksheet it was read from, for the writer; null for a sheet not read from <c>.xlsx</c>.</summary>
     internal Xlsx.SheetSource? Source { get; set; }
 }
