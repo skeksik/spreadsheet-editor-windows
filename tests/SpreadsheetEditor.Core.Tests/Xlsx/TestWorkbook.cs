@@ -7,22 +7,23 @@ namespace SpreadsheetEditor.Core.Tests.Xlsx;
 /// <summary>Builds small <c>.xlsx</c> packages in code with the Open XML SDK, for reader tests. Every value in them is made up.</summary>
 internal sealed class TestWorkbook
 {
-    private readonly List<(string Name, TestSheet? Sheet)> sheets = [];
+    private readonly List<(string Name, TestSheet? Sheet, bool Hidden)> sheets = [];
     private readonly List<X.SharedStringItem> sharedStrings = [];
     private readonly List<(uint Id, string Code)> customFormats = [];
     private readonly List<uint> cellFormats = [0];
 
     public bool Date1904 { get; set; }
 
-    public TestSheet AddSheet(string name)
+    /// <summary>Adds a worksheet; a hidden one has <c>state="hidden"</c> in the workbook's sheet list.</summary>
+    public TestSheet AddSheet(string name, bool hidden = false)
     {
         var sheet = new TestSheet(this);
-        sheets.Add((name, sheet));
+        sheets.Add((name, sheet, hidden));
         return sheet;
     }
 
     /// <summary>Adds a chart sheet (no grid) with this name.</summary>
-    public void AddChartSheet(string name) => sheets.Add((name, null));
+    public void AddChartSheet(string name) => sheets.Add((name, null, false));
 
     /// <summary>Adds a cell style with this number format and returns its index; <paramref name="code"/> defines a custom format.</summary>
     public uint AddNumberFormat(uint formatId, string? code = null)
@@ -75,7 +76,7 @@ internal sealed class TestWorkbook
             }
 
             uint sheetId = 1;
-            foreach (var (name, sheet) in sheets)
+            foreach (var (name, sheet, hidden) in sheets)
             {
                 OpenXmlPart part;
                 if (sheet is null)
@@ -90,7 +91,12 @@ internal sealed class TestWorkbook
                     worksheetPart.Worksheet = sheet.ToWorksheet();
                     part = worksheetPart;
                 }
-                sheetList.AppendChild(new X.Sheet { Id = workbookPart.GetIdOfPart(part), SheetId = sheetId++, Name = name });
+                var entry = new X.Sheet { Id = workbookPart.GetIdOfPart(part), SheetId = sheetId++, Name = name };
+                if (hidden)
+                {
+                    entry.State = X.SheetStateValues.Hidden;
+                }
+                sheetList.AppendChild(entry);
             }
         }
         return stream.ToArray();

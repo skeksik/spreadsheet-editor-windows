@@ -414,6 +414,20 @@ public sealed class XlsxReaderTests
     }
 
     [TestMethod]
+    public void ReadsHiddenWorksheetsLikeOthers()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Shown").Row("A1", "A").Row("A2", "x");
+        book.AddSheet("Hidden", hidden: true).Row("A1", "B").Row("A2", "y");
+
+        var workbook = Read(book);
+
+        Assert.AreEqual(2, workbook.Sheets.Count);
+        Assert.AreEqual("Hidden", workbook.Sheets[1].Name);
+        AssertTexts(workbook.Sheets[1].Cards[0], "y");
+    }
+
+    [TestMethod]
     public void WorkbookWithOnlyAChartSheetHasNoSheets()
     {
         var book = new TestWorkbook();
