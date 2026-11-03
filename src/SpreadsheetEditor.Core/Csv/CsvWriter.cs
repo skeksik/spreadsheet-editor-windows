@@ -1,4 +1,6 @@
+using System.Text;
 using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Xlsx;
 
 namespace SpreadsheetEditor.Core.Csv;
 
@@ -16,12 +18,71 @@ namespace SpreadsheetEditor.Core.Csv;
 /// </summary>
 public static class CsvWriter
 {
-    /// <summary>Writes <paramref name="sheet"/> to the file at <paramref name="path"/>, replacing it.</summary>
+    /// <summary>Writes the file on the thread pool (docs/spec.md §9.53).</summary>
+    /// <inheritdoc cref="Write(Sheet, string, CsvFormat)"/>
+    public static Task WriteAsync(Sheet sheet, string path, CsvFormat format, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Write(sheet, path, format), cancellationToken);
+
+    /// <summary>
+    /// Writes <paramref name="sheet"/> to the file at <paramref name="path"/>, replacing it: into a temporary file in the target's folder,
+    /// which then replaces the target, as <see cref="Xlsx.XlsxWriter"/> does, so a failed write leaves the target as it was.
+    /// </summary>
+    /// <exception cref="SpreadsheetWriteException">
+    /// The file cannot be written (<see cref="SpreadsheetWriteError.AccessDenied"/>, <see cref="SpreadsheetWriteError.WriteFailed"/>), or a
+    /// value has a character the format's encoding cannot hold, such as a lone surrogate (<see cref="SpreadsheetWriteError.WriteFailed"/>).
+    /// </exception>
     public static void Write(Sheet sheet, string path, CsvFormat format)
     {
+        ArgumentNullException.ThrowIfNull(sheet);
         ArgumentException.ThrowIfNullOrEmpty(path);
-        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024);
-        Write(sheet, stream, format);
+        ArgumentNullException.ThrowIfNull(format);
+        string? temporary = null;
+        try
+        {
+            var full = Path.GetFullPath(path);
+            var folder = Path.GetDirectoryName(full) ?? ".";
+            temporary = Path.Combine(folder, $"{Path.GetFileName(full)}.{Guid.NewGuid():N}.tmp");
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024))
+            {
+                Write(sheet, stream, format);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporary, full, overwrite: true);
+            temporary = null;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new SpreadsheetWriteException(SpreadsheetWriteError.AccessDenied, $"The file cannot be written: {ex.Message}", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new SpreadsheetWriteException(SpreadsheetWriteError.WriteFailed, $"The file could not be written: {ex.Message}", ex);
+        }
+        catch (EncoderFallbackException ex)
+        {
+            throw new SpreadsheetWriteException(
+                SpreadsheetWriteError.WriteFailed, $"A value has a character the file's encoding cannot hold: {ex.Message}", ex);
+        }
+        finally
+        {
+            if (temporary is not null)
+            {
+                TryDelete(temporary);
+            }
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Left behind; the save has already failed with the error that matters.
+        }
     }
 
     /// <summary>Writes <paramref name="sheet"/> to <paramref name="stream"/>, which stays open.</summary>
