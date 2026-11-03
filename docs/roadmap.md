@@ -35,9 +35,9 @@ references are to `docs/spec.md`.
 - [x] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
       its references shifted), instead of their cached value (§9.3). Until then such cells show their value and are written back
       untouched unless edited. Depends on `feat/xlsx-read` and `feat/formula-references`.
-- [ ] `feat/xlsx-write`, in two PRs. Part A (`feat/xlsx-write`, #19, merged): values, sheets and clearing, with cards over their
-      source rows; part B in two PRs: `feat/xlsx-write-rows` (row insertion and deletion, the name row, moved and shared formulas,
-      sheet renames) and `feat/xlsx-write-pictures` (pictures, row heights, column widths, merges over picture rows). Together
+- [x] `feat/xlsx-write`, in two PRs. Part A (`feat/xlsx-write`, #19): values, sheets and clearing, with cards over their
+      source rows; part B in two PRs: `feat/xlsx-write-rows` (#21; row insertion and deletion, the name row, moved and shared
+      formulas, sheet renames) and `feat/xlsx-write-pictures` (#22; pictures, row heights, column widths, merges over picture rows). Together
       they write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
@@ -49,6 +49,10 @@ references are to `docs/spec.md`.
 - [x] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
 - [ ] `spike/jpeg-orientation` (local): does Excel apply a JPEG's EXIF orientation to a picture in an `.xlsx`? Check an
       orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
+- [ ] `test/xlsx-in-excel` (local): open workbooks saved by the writer (values, rows inserted, deleted and moved, pictures, renamed
+      and duplicated sheets, shared formulas) in Excel on the owner's PC: no repair prompt, and the content as expected. CI cannot
+      check this (PRs #19, #21, #22 mark it not verified). A cloud worker writes the sample files and the check list; a local card
+      opens them.
 
 ## M2: Editing in the core (cloud)
 - [x] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`, #12): the undo and redo stack, card and entry
@@ -62,7 +66,9 @@ references are to `docs/spec.md`.
 - [ ] `feat/app-document`: New, Open, Save, Save as with the system pickers and Ctrl+N/O/S/Shift+S; title `{file} - Spreadsheet
       Editor` with an unsaved marker; Save / Don't save / Cancel on close, open and drop; open and save off the UI thread with a
       progress state; errors in a ContentDialog with details in an expander; drop a file on the window to open it (spec §2.1–2.2,
-      §10.4–10.8, §10.17). Saves write a temporary file and replace the target, so a failed save never damages the file.
+      §10.4–10.8, §10.17). Saves write a temporary file and replace the target, so a failed save never damages the file. The File menu
+      gets access keys, and the exe's file description becomes "Spreadsheet Editor" (the taskbar's accessible name; found by the
+      localisation check).
 - [ ] `feat/app-sheets`: one TabView tab per sheet with add, close (asks only for non-empty sheets), drag to reorder, inline rename,
       duplicate, context menu with icons and accelerators, Ctrl+T/W/Tab (§2.3, §10.1, §10.22–10.23).
 - [ ] `feat/app-cards`: the sheet page: the settings bar (table name, picture width and height NumberBoxes with headers, aspect lock
@@ -72,12 +78,13 @@ references are to `docs/spec.md`.
 - [ ] `feat/app-entries`: add, remove, reorder and rename entries with ContentDialogs that work by identity (§2.5, §10.3).
 - [ ] `feat/app-pictures`: the picture strip: thumbnails decoded at display size off the UI thread and cached, add from the picker,
       paste and drag and drop, preview with zoom and arrow keys, copy one or all, remove with Delete, keyboard access (§6, §9.44–9.49,
-      §10.16, §10.21).
+      §10.16, §10.21). A file whose header cannot be read is refused when it is added, since the writer cannot save a picture of
+      unknown format.
 - [ ] `feat/app-styles`: fill and text colour flyouts with the system ColorPicker, recent colours, No fill and Automatic; the text
       field previews fill, colour, bold, italic and alignment if the owner agrees (§2.6, §9.43, §10.11).
 - [ ] `feat/app-undo`: Edit menu and Ctrl+Z / Ctrl+Y over the core's undo; destructive actions without confirmation where undo covers
       them (§10.14).
-- [ ] `feat/app-localisation`: every string in `Strings/en-US` and `Strings/ru-RU` resources (spec §7.2); follow the Windows display
+- [x] `feat/app-localisation` (#17): every string in `Strings/en-US` and `Strings/ru-RU` resources (spec §7.2); follow the Windows display
       language with an override in Settings (§10.9–10.10). Overlaps every app task: run it early, then each task adds its strings.
 - [ ] `feat/app-settings`: a Settings page (language, theme follows Windows), window size and position remembered, recent files in the
       File menu and the taskbar jump list (§7.3).
