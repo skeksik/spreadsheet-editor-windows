@@ -455,7 +455,7 @@ For each card, each entry's value comes from the cell in the card's **first** wo
    - Otherwise the value is a plain value.
 4. **Picture entries.** Any entry that received a picture in at least one card becomes a picture entry. In every other card, that entry's value is converted to an empty picture value: text = the old value as text, fill none, textColor `#000000`.
 
-Numbers are shown as their plain text form (`3`, `3.5`), and booleans as `True` / `False`.
+Numbers are shown as their plain text form (`3`, `3.5`), and booleans as `True` / `False` (replaced by section 9.3: `TRUE` / `FALSE`).
 
 A cell that holds a formula is shown as its formula text, beginning with `=`.
 
@@ -574,6 +574,7 @@ Each sheet's picture settings are stored in hidden cells in the **last worksheet
 - Entry names:
   - a blank header gets `Unnamed: {i}` (0-based position)
   - repeated header names get `.1`, `.2`, … appended to the later occurrences
+  - (Replaced by sections 9.36–9.38: header names are kept exactly as read, blank and repeated ones included, so the file survives a round trip.)
 - One card per data line, with rowSpan 1. A file with only a header line has **zero cards**.
 - No pictures. Settings: width 136, height 180, 8 per row.
 - No source workbook.
@@ -1006,6 +1007,7 @@ Each item states the intended behaviour (**Intended**), the owner's answer (**De
    - Values the user does not edit keep their original type and are written back as read.
    - Edited text that is a number in the UI language's number format is saved as a number; `TRUE` and `FALSE` are saved as booleans; anything else is saved as text.
    - Formulas are shown and edited as their source text, beginning with `=`, and saved as formulas. The app does not compute them; the saved file makes the spreadsheet program recalculate them when it opens the file (how is the writer task's to propose, with a source).
+   - Details settled with the cell-values task (manager, 2026-11-03, within the owner's answer): booleans show as `TRUE` / `FALSE` in every language and are typed in either case; a number is shown in its shortest exact form with the language's decimal separator; typed text becomes a number only when it is plainly one (no group separators, exponent, currency or percent, no leading zeros such as `007`, at most 15 significant digits), a time alone becomes a time, and anything else stays text; in a cell formatted as Text, whatever is typed stays text, as in Excel.
 4. **ISO-date prefix truncation.** Text like `2024-01-15 meeting notes` from CSV is displayed (and later saved) as just the date. **Intended:** never alter text that is not a real date value.
 5. **Indexed (legacy palette) colours** are ignored: the fill becomes none and the text becomes black. **Intended:** resolve them with the standard 64-colour indexed palette.
 6. **Automatic text colour becomes explicit black** on every saved cell, and there is no way to set a text colour back to automatic. **Decided (owner, 2026-11-03):** "automatic" is a distinct text-colour state. A cell without a font colour reads as automatic and is never written as explicit black; the text-colour flyout has an `Automatic` item, as the fill flyout has `No fill` (section 10.11).

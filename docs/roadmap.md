@@ -12,13 +12,13 @@ references are to `docs/spec.md`.
       (2026-11-03).
 
 ## M1: Files in the core (cloud)
-- [ ] `feat/picture-facts`: read a picture's format and pixel size from its header (PNG, JPEG by its SOF marker, GIF, BMP);
+- [x] `feat/picture-facts`: read a picture's format and pixel size from its header (PNG, JPEG by its SOF marker, GIF, BMP);
       `IsWide`; the centre-crop source rectangle in 1/100000 units (spec §5.4). Core only, with tests.
 - [x] `feat/picture-layout`: the cell layout of a value's pictures: units, per-column capacity, the 1762 px cap, the placement loop
       that also counts picture rows, picture rows per worksheet row from the height (spec §5.3–5.4, §9 items 25–26), worksheet
       rows needed, row heights, column widths and the px↔width formulas. Pure functions over the model (`EntryImage.IsWide`), with
       tests.
-- [ ] `feat/cell-values`: a value's text for a culture and edited text parsed back: numbers, booleans, dates and times in the short
+- [x] `feat/cell-values`: a value's text for a culture and edited text parsed back: numbers, booleans, dates and times in the short
       date format, formulas as `=source`, the cell's number format kept (§4.2, §9.2–9.4). `CellValue` gains a formula and a number
       format. Core only, with tests in en-US and ru-RU.
 - [ ] `feat/xlsx-read`: open an `.xlsx` with the Open XML SDK and build the model: table detection with metadata cells ignored
@@ -28,13 +28,16 @@ references are to `docs/spec.md`.
       (§9.10, §9.12), hidden worksheets read (§9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's
       text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets), then
       `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
+- [ ] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
+      its references shifted), instead of their cached value (§9.3). Until then such cells show their value and are written back
+      untouched unless edited. Depends on `feat/xlsx-read`.
 - [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
       merges, row heights, column widths, pictures with source-rectangle crop, print area (§9.27), metadata column; a new workbook
       from an empty package; repeatable saves (§9.21). Round-trip tests. Depends on `feat/xlsx-read`, `feat/cell-values` and
       `feat/picture-layout`.
-- [ ] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35): separator and encoding detected and kept,
+- [x] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35): separator and encoding detected and kept,
       one empty card for a header-only file, export of one given sheet, round-trip tests.
 - [x] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
 - [ ] `spike/jpeg-orientation` (local): does Excel apply a JPEG's EXIF orientation to a picture in an `.xlsx`? Check an
