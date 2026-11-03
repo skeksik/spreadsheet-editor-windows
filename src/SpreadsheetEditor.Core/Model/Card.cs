@@ -10,4 +10,10 @@ public sealed class Card
 
     /// <summary>The 1-based worksheet row the card started on when read, or null for a card that was not read from <c>.xlsx</c>.</summary>
     internal int? SourceFirstRow { get; set; }
+
+    /// <summary>
+    /// For a duplicated card, the 1-based worksheet row as read of the card it is a copy of (followed through copies of copies), or null.
+    /// The writer copies its unedited values from that row, translating formulas as a copy and paste does.
+    /// </summary>
+    internal int? CopiedFromRow { get; set; }
 }

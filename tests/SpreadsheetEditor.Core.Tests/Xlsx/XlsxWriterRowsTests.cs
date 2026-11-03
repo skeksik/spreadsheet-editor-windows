@@ -333,8 +333,90 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("after", after.Text("Plants", "A16"));
     }
 
+    /// <summary>A copy of a card as WorkbookEditor.DuplicateCard makes it: same values, no rows of its own, copied from the card's row.</summary>
+    private static Card Duplicate(Card source)
+    {
+        var copy = new Card { SourceRowSpan = source.SourceRowSpan, CopiedFromRow = source.SourceFirstRow ?? source.CopiedFromRow };
+        copy.Entries.AddRange(source.Entries.Select(e => new Entry { Text = e.Text, Original = e.Original, Style = e.Style }));
+        return copy;
+    }
+
+    private static byte[] Doubles()
+    {
+        var book = new TestWorkbook();
+        var bold = book.AddStyle(font: new X.Font(new X.Bold(), new X.FontSize { Val = 11 }, new X.FontName { Val = "Calibri" }));
+        book.AddSheet("Sums").Row("A1", "Name", "Value", "Double", "Fixed")
+            .Row("A2", "One", 2).Formula("C2", "B2*2", 4).Formula("D2", "$B$2+1", 3).Set("A3", "Two", bold).Set("B3", 3)
+            .Formula("C3", "B3*2", 6).Formula("D3", "$B$2+1", 3)
+            .Row("A15", "Total").Formula("B15", "SUM(C2:C3)", 10);
+        return book.ToBytes();
+    }
+
     [TestMethod]
-    public void AFormulaInADuplicatedCardIsNotSupported()
+    public void ADuplicatedCardsFormulasAreTranslatedFromTheCardItCopies()
+    {
+        var bytes = Change(Doubles(), w => w.Sheets[0].Cards.Insert(2, Duplicate(w.Sheets[0].Cards[1])));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("B3*2", Formula(after, "Sums", "C3"));
+        Assert.AreEqual("B4*2", Formula(after, "Sums", "C4"), "the copy below its source, as a copy and paste gives");
+        Assert.AreEqual("$B$2+1", Formula(after, "Sums", "D4"), "absolute references stay");
+        Assert.AreEqual("Two", after.Text("Sums", "A4"));
+        Assert.AreEqual(after.Cell("Sums", "A3")!.StyleIndex?.Value, after.Cell("Sums", "A4")!.StyleIndex?.Value, "the copy takes its source's styles");
+        Assert.AreEqual("SUM(C2:C3)", Formula(after, "Sums", "B16"), "a row inserted below a range does not grow it");
+    }
+
+    [TestMethod]
+    public void ACopyOfACopyAboveItsSourceIsTranslatedFromTheSourcesNewRow()
+    {
+        var bytes = Change(Doubles(), w =>
+        {
+            var cards = w.Sheets[0].Cards;
+            var copy = Duplicate(cards[1]);
+            cards.Insert(0, Duplicate(copy));
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("Two", after.Text("Sums", "A2"));
+        Assert.AreEqual("B2*2", Formula(after, "Sums", "C2"));
+        Assert.AreEqual("B4*2", Formula(after, "Sums", "C4"), "the source moved down a row");
+    }
+
+    [TestMethod]
+    public void ADuplicateOfARemovedCardIsTranslatedFromTheRemovedRow()
+    {
+        var bytes = Change(Doubles(), w =>
+        {
+            var cards = w.Sheets[0].Cards;
+            var copy = Duplicate(cards[0]);
+            cards.RemoveAt(0);
+            cards.Add(copy);
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("One", after.Text("Sums", "A3"));
+        Assert.AreEqual("B3*2", Formula(after, "Sums", "C3"), "its own row, not #REF! for the deleted row");
+        Assert.AreEqual("B2*2", Formula(after, "Sums", "C2"));
+        Assert.AreEqual("#REF!+1", Formula(after, "Sums", "D2"), "the kept card's reference to the deleted row");
+        Assert.AreEqual("SUM(C2:C2)", Formula(after, "Sums", "B15"));
+    }
+
+    [TestMethod]
+    public void AnEditedFormulaInADuplicatedCardIsWrittenAsEdited()
+    {
+        var bytes = Change(Doubles(), w =>
+        {
+            var copy = Duplicate(w.Sheets[0].Cards[0]);
+            copy.Entries[2].Text = "=B3*3";
+            w.Sheets[0].Cards.Add(copy);
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("B3*3", Formula(after, "Sums", "C4"));
+    }
+
+    [TestMethod]
+    public void AFormulaInACopiedCardWithoutASourceRowIsNotSupported()
     {
         var book = new TestWorkbook();
         book.AddSheet("Sums").Row("A1", "Name", "Double").Row("A2", "One").Formula("B2", "ROW()*2", 4);

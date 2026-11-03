@@ -97,7 +97,7 @@ public sealed class WorkbookEditor
     public Card DuplicateCard(Sheet sheet, Card card)
     {
         var index = IndexOf(sheet, card);
-        var copy = new Card { SourceRowSpan = card.SourceRowSpan };
+        var copy = new Card { SourceRowSpan = card.SourceRowSpan, CopiedFromRow = card.SourceFirstRow ?? card.CopiedFromRow };
         foreach (var entry in card.Entries)
         {
             var entryCopy = new Entry { Text = entry.Text, Original = entry.Original, Style = entry.Style };
@@ -597,7 +597,7 @@ public sealed class WorkbookEditor
             new Column(column.Name) { IsImageColumn = column.IsImageColumn, SourceIndex = column.SourceIndex }));
         foreach (var card in sheet.Cards)
         {
-            var cardCopy = new Card { SourceRowSpan = card.SourceRowSpan, SourceFirstRow = card.SourceFirstRow };
+            var cardCopy = new Card { SourceRowSpan = card.SourceRowSpan, SourceFirstRow = card.SourceFirstRow, CopiedFromRow = card.CopiedFromRow };
             foreach (var entry in card.Entries)
             {
                 var entryCopy = new Entry { Text = entry.Text, Original = entry.Original, Style = entry.Style };

@@ -61,6 +61,7 @@ public sealed partial class WorkbookEditorTests
         Assert.AreEqual("r0a r0b|r0a r0b|r1a r1b", Describe(sheet));
         Assert.AreEqual(3, copy.SourceRowSpan);
         Assert.IsNull(copy.SourceFirstRow, "a duplicate is a new card");
+        Assert.AreEqual(2, copy.CopiedFromRow, "it copies the source card's row as read");
         Assert.AreEqual(2, source.SourceFirstRow);
         Assert.AreNotSame(source.Entries[0], copy.Entries[0]);
         Assert.AreSame(style, copy.Entries[0].Style);
@@ -68,6 +69,26 @@ public sealed partial class WorkbookEditorTests
         Assert.AreNotSame(source.Entries[0].Images, copy.Entries[0].Images);
         CollectionAssert.AreEqual(new[] { image }, copy.Entries[0].Images);
         AssertUndoRedo(editor, sheet, "r0a r0b|r1a r1b", "r0a r0b|r0a r0b|r1a r1b");
+    }
+
+    [TestMethod]
+    public void ACopyOfACopyCopiesTheFirstCardsRow()
+    {
+        var (editor, sheet) = Open(cards: 2);
+        sheet.Cards[0].SourceFirstRow = 4;
+        var copy = editor.DuplicateCard(sheet, sheet.Cards[0]);
+
+        var second = editor.DuplicateCard(sheet, copy);
+        var fresh = editor.DuplicateCard(sheet, editor.InsertCardBelow(sheet, sheet.Cards[^1]));
+
+        Assert.AreEqual(4, second.CopiedFromRow);
+        Assert.IsNull(fresh.CopiedFromRow, "a copy of a card that was not read from the file has no row to copy from");
+        editor.Undo();
+        editor.Undo();
+        editor.Undo();
+        editor.Redo();
+        Assert.AreSame(second, sheet.Cards[2]);
+        Assert.AreEqual(4, sheet.Cards[2].CopiedFromRow);
     }
 
     [TestMethod]

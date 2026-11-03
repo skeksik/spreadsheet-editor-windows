@@ -163,7 +163,8 @@ internal sealed class WorksheetWriter
                     $"A card or entry with pictures on the sheet \"{sheet.Name}\" was added, duplicated or moved to another column; pictures cannot be laid out yet.");
             }
 
-            (int Row, int Column)? from = rows.SourceFirstRow is { } first && sheet.Columns[j].SourceIndex is { } index
+            // A duplicated card's values come from the card it copies, as read: unedited ones are copied (formulas translated).
+            (int Row, int Column)? from = (rows.SourceFirstRow ?? card.CopiedFromRow) is { } first && sheet.Columns[j].SourceIndex is { } index
                 ? (first, origin.FirstColumn + index)
                 : null;
             // A kept card's cells moved with its rows: a value in its own column is in place.
@@ -274,7 +275,8 @@ internal sealed class WorksheetWriter
 
         if (value.Formula is not null && ReferenceEquals(value, entry.Original))
         {
-            // A copy of a card (or entry) holds the formula as read, but not where it was read from, so it cannot be translated.
+            // A copy of a card with no row as read (a card copied from a sheet without a source) holds the formula but not where it was
+            // read from, so it cannot be translated.
             throw SpreadsheetWriteException.NotSupported(
                 $"A copied card on the sheet \"{sheet.Name}\" holds a formula, which would go to the cell {CellIndex.Name(row, column)}; a copied formula cannot be written yet.");
         }
@@ -409,8 +411,17 @@ internal sealed class WorksheetWriter
                     $"An array or data table formula on the sheet \"{sheet.Name}\" would move to the cell {CellIndex.Name(row, column)}; it cannot be moved apart from its range.");
             }
 
-            var shifted = context.References.Apply(text, sheet.Name);
-            var positional = plan?.Positional(fromRow) ?? fromRow;
+            // A duplicated card may copy a card whose rows the save deletes: its formula is first moved, as a copy, to the first row after
+            // them, so that its relative references (to its own row, say) are not lost with the deleted rows.
+            var anchor = fromRow;
+            while (plan is not null && plan.IsRemoved(anchor))
+            {
+                anchor++;
+            }
+
+            var moved = anchor == fromRow ? text : FormulaReferences.Translate(text, anchor - fromRow, 0);
+            var shifted = context.References.Apply(moved, sheet.Name);
+            var positional = plan?.Positional(anchor) ?? anchor;
             var formulaCell = Prepare(row, column, source.Style(fromRow, fromColumn));
             formulaCell.CellFormula = new X.CellFormula(FormulaReferences.Translate(shifted, row - positional, column - fromColumn));
             return;

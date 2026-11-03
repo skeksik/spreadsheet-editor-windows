@@ -219,6 +219,21 @@ public sealed partial class WorkbookEditorTests
     }
 
     [TestMethod]
+    public void DuplicateSheetKeepsWhereDuplicatedCardsWereCopiedFrom()
+    {
+        var (editor, sheet) = Open(cards: 1);
+        sheet.Cards[0].SourceFirstRow = 2;
+        editor.DuplicateCard(sheet, sheet.Cards[0]);
+
+        var copy = editor.DuplicateSheet(sheet);
+
+        Assert.AreEqual(2, copy.Cards[0].SourceFirstRow);
+        Assert.IsNull(copy.Cards[0].CopiedFromRow);
+        Assert.IsNull(copy.Cards[1].SourceFirstRow);
+        Assert.AreEqual(2, copy.Cards[1].CopiedFromRow);
+    }
+
+    [TestMethod]
     public void RemovesASheetButNeverTheLast()
     {
         var (editor, first) = Open(cards: 1);
