@@ -96,3 +96,21 @@ run tests what the user gets instead.
 3. A display language the app does not have, e.g. German: the app is in English.
 4. The override, with the app closed: write `{ "language": "ru" }` to `settings.json` and start the app. It is in Russian whatever the
    Windows language is. Then try `"en"`, then `"system"`. A damaged file (e.g. `{`) starts the app in Windows' language without an error.
+
+## Localisation: Windows run
+Checked 2026-11-03 on the owner's PC, head `a7ae9bf`, built with `build.ps1` (not `-Smoke`). Windows 11 Pro 26H2, build 26300.9711;
+Windows display language English (en-US); primary display 2560×1440 at 150 %; dark theme. Texts were read through UI Automation and on
+screen; the File menu was opened in each run.
+
+| Case | Result |
+| --- | --- |
+| 1. No `settings.json`, Windows in English | Pass: `File` › `Exit`, `No spreadsheet open` / `Open an .xlsx or .csv file to edit its rows as cards.`, title bar and taskbar thumbnail `Spreadsheet Editor`. The app did not create the file. |
+| 2. `{ "language": "ru" }` | Pass: `Файл` › `Выход`, `Таблица не открыта` / `Откройте файл .xlsx или .csv, чтобы редактировать его строки как карточки.`, title still `Spreadsheet Editor`. |
+| 3. `{ "language": "en" }` | Pass: English, as in case 1. |
+| 4. `{ "language": "system" }` | Pass: English, as in case 1. |
+| 5. `{` (damaged) | Pass: English, one window, no dialog, no .NET Runtime or Application Error event; the file was left as it was. |
+| 6. Windows display language Russian | Not run (optional; it changes the Windows language). |
+| 7. Look and feel | Pass: menu, menu item and empty-state texts are not cut off or overlapping in either language (150 %, dark). |
+
+Seen in passing, outside these cases: the menu items report no access key through UI Automation, and the taskbar button's accessible name
+is `SpreadsheetEditor - 1 running window`, from the exe's FileDescription (the assembly name), not `Spreadsheet Editor`.
