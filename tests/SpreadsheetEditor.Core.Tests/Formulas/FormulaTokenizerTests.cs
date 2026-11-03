@@ -91,6 +91,34 @@ public sealed class FormulaTokenizerTests
     }
 
     [TestMethod]
+    [DataRow("=Sheet1:Sheet3!A1", false)]
+    [DataRow("='Sheet 1:Sheet 3'!A1", false)]
+    [DataRow("=[1]Sheet1!A1", true)]
+    [DataRow("=[1]Sheet1:Sheet3!A1", true)]
+    [DataRow("='[1]Sheet 1'!A1", true)]
+    [DataRow("=[1]'Sheet 1'!A1", true)]
+    [DataRow("='C:\\Files\\[Book.xlsx]Sheet 1'!A1", true)]
+    [DataRow("=Sheet1!A1", false)]
+    public void MarksExternalReferences(string formula, bool external)
+    {
+        var token = FormulaTokenizer.Tokenize(formula).Single(t => t.Kind == FormulaTokenKind.Reference);
+        Assert.AreEqual(external, token.IsExternal);
+    }
+
+    [TestMethod]
+    [DataRow("=Sheet1!MyName", "Sheet1", "Sheet1!")]
+    [DataRow("='My sheet'!#REF!", "My sheet", "'My sheet'!")]
+    [DataRow("=Sheet1:Sheet3!Total", "Sheet1:Sheet3", "Sheet1:Sheet3!")]
+    public void SheetPrefixWithoutAreaCarriesItsSheetName(string formula, string sheet, string prefix)
+    {
+        var token = FormulaTokenizer.Tokenize(formula).First(t => t.SheetName is not null);
+        Assert.AreEqual(FormulaTokenKind.Other, token.Kind);
+        Assert.AreEqual(sheet, token.SheetName);
+        Assert.AreEqual(prefix.Length, token.PrefixLength);
+        Assert.AreEqual(prefix, formula.Substring(token.Start, token.Length));
+    }
+
+    [TestMethod]
     public void ReadsTheEdgesOfTheSheet()
     {
         CollectionAssert.AreEqual(Edges,

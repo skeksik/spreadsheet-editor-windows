@@ -44,6 +44,7 @@ public sealed class XlsxReaderTests
 
         Assert.AreEqual("Plants", sheet.Name);
         AssertNames(sheet, "Name", "Colour");
+        CollectionAssert.AreEqual(new int?[] { 0, 1 }, sheet.Columns.Select(c => c.SourceIndex).ToArray());
         Assert.IsNull(sheet.TableName);
         Assert.AreEqual(1, sheet.TableNameColumn);
         Assert.AreEqual(1, sheet.FirstColumn);

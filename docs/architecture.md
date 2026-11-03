@@ -15,7 +15,7 @@ SpreadsheetEditor.Core (net10.0, no Windows API)
   Xlsx/        reader (table detection, cards, styles, theme colours, pictures) and writer (in-place edit of the package)
   Csv/         reader and writer
   Imaging/     picture header facts (pixel size, format), the cell layout of pictures, crop rectangles
-  Formulas/    A1 references in formula text: shifted for inserted or deleted rows, translated for shared formulas
+  Formulas/    A1 references in formula text: shifted for inserted or deleted rows, translated for shared formulas, renamed sheets
   Editing/     WorkbookEditor: operations on the model (sheets, cards, entries, values, table name, picture layout) with undo, redo,
                the modified flag and change events (WorkbookChange: SheetInserted, SheetRemoved, SheetMoved, SheetRenamed,
                CardInserted, CardRemoved, CardMoved, EntriesChanged, EntryRenamed, EntryTextChanged, EntryStyleChanged,

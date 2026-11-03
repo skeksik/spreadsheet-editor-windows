@@ -16,6 +16,10 @@ internal sealed class TestSheet
     private readonly Dictionary<int, uint> rowStyles = [];
     private readonly List<(uint First, uint Last, uint Style)> columnStyles = [];
     private readonly List<(int Column, int Row, byte[] Bytes, PictureAnchor Anchor)> pictures = [];
+    private readonly List<(uint Min, uint Max, double Width)> widths = [];
+
+    /// <summary>When set, the worksheet has page margins and a landscape page setup.</summary>
+    public bool PageSetup { get; set; }
 
     internal TestSheet(TestWorkbook workbook) => this.workbook = workbook;
 
@@ -64,7 +68,26 @@ internal sealed class TestSheet
     }
 
     /// <summary>Sets a cell with a formula and its cached value (a number, a string or a bool).</summary>
-    public TestSheet Formula(string reference, string formula, object cached)
+    public TestSheet Formula(string reference, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula), cached);
+
+    /// <summary>Sets a shared formula's master cell: <c>&lt;f t="shared" ref="range" si="index"&gt;formula&lt;/f&gt;</c>.</summary>
+    public TestSheet SharedMaster(string reference, uint index, string range, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Shared, Reference = range, SharedIndex = index }, cached);
+
+    /// <summary>Sets one of a shared formula's other cells: <c>&lt;f t="shared" si="index"/&gt;</c> and its cached value.</summary>
+    public TestSheet Shared(string reference, uint index, object cached) =>
+        FormulaCell(reference, new X.CellFormula { FormulaType = X.CellFormulaValues.Shared, SharedIndex = index }, cached);
+
+    /// <summary>Sets an array formula's top-left cell: <c>&lt;f t="array" ref="range"&gt;formula&lt;/f&gt;</c>.</summary>
+    public TestSheet ArrayFormula(string reference, string range, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Array, Reference = range }, cached);
+
+    /// <summary>Sets a data table's top-left cell: <c>&lt;f t="dataTable" ref="range" r1="input"/&gt;</c>, without text.</summary>
+    public TestSheet DataTable(string reference, string range, string input, object cached) =>
+        FormulaCell(reference, new X.CellFormula { FormulaType = X.CellFormulaValues.DataTable, Reference = range, R1 = input }, cached);
+
+    private TestSheet FormulaCell(string reference, X.CellFormula formula, object cached)
     {
         var cell = cached switch
         {
@@ -72,7 +95,7 @@ internal sealed class TestSheet
             bool flag => new X.Cell { DataType = X.CellValues.Boolean, CellValue = new X.CellValue(flag ? "1" : "0") },
             _ => new X.Cell { CellValue = new X.CellValue(Convert.ToString(cached, CultureInfo.InvariantCulture)!) },
         };
-        cell.CellFormula = new X.CellFormula(formula);
+        cell.CellFormula = formula;
         return Put(reference, cell, 0);
     }
 
@@ -105,6 +128,29 @@ internal sealed class TestSheet
         return this;
     }
 
+    /// <summary>Sets a shared formula's first cell, whose formula is used by every cell of <paramref name="range"/>.</summary>
+    public TestSheet SharedFormula(string reference, string formula, string range, double cached)
+    {
+        var cell = new X.Cell { CellValue = new X.CellValue(cached.ToString(CultureInfo.InvariantCulture)) };
+        cell.CellFormula = new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Shared, Reference = range, SharedIndex = 0 };
+        return Put(reference, cell, 0);
+    }
+
+    /// <summary>Sets another cell of shared formula 0: no formula text, only its cached value.</summary>
+    public TestSheet SharedDependent(string reference, double cached)
+    {
+        var cell = new X.Cell { CellValue = new X.CellValue(cached.ToString(CultureInfo.InvariantCulture)) };
+        cell.CellFormula = new X.CellFormula { FormulaType = X.CellFormulaValues.Shared, SharedIndex = 0 };
+        return Put(reference, cell, 0);
+    }
+
+    /// <summary>Gives columns <paramref name="min"/> to <paramref name="max"/> a width (a <c>col</c> element without a style).</summary>
+    public TestSheet Width(uint min, uint max, double width)
+    {
+        widths.Add((min, max, width));
+        return this;
+    }
+
     public TestSheet Merge(string range)
     {
         merges.Add(range);
@@ -133,14 +179,21 @@ internal sealed class TestSheet
             data.AppendChild(row);
         }
         var worksheet = new X.Worksheet();
-        if (columnStyles.Count > 0)
+        if (columnStyles.Count > 0 || widths.Count > 0)
         {
-            worksheet.AppendChild(new X.Columns(columnStyles.Select(c => new X.Column { Min = c.First, Max = c.Last, Style = c.Style, Width = 10, CustomWidth = true })));
+            worksheet.AppendChild(new X.Columns(
+                columnStyles.Select(c => new X.Column { Min = c.First, Max = c.Last, Style = c.Style, Width = 10, CustomWidth = true })
+                    .Concat(widths.Select(c => new X.Column { Min = c.Min, Max = c.Max, Width = c.Width, CustomWidth = true }))));
         }
         worksheet.AppendChild(data);
         if (merges.Count > 0)
         {
             worksheet.AppendChild(new X.MergeCells(merges.Select(m => new X.MergeCell { Reference = m })));
+        }
+        if (PageSetup)
+        {
+            worksheet.AppendChild(new X.PageMargins { Left = 0.5, Right = 0.5, Top = 0.75, Bottom = 0.75, Header = 0.3, Footer = 0.3 });
+            worksheet.AppendChild(new X.PageSetup { Orientation = X.OrientationValues.Landscape });
         }
         return worksheet;
     }

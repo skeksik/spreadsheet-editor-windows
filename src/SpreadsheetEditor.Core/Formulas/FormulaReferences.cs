@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Xlsx;
 
@@ -6,7 +7,7 @@ namespace SpreadsheetEditor.Core.Formulas;
 
 /// <summary>
 /// Rewrites the A1 references in formula text when worksheet rows are inserted or deleted, and translates a shared formula to another
-/// cell. Pure functions over text: no workbook, no evaluation. Text in double quotes, function names, defined names, error literals and
+/// cell, and renames a sheet in its references. Pure functions over text: no workbook, no evaluation. Text in double quotes, function names, defined names, error literals and
 /// bracketed text are copied unchanged, and so is everything else that is not a reference.
 /// </summary>
 /// <remarks>
@@ -24,9 +25,100 @@ namespace SpreadsheetEditor.Core.Formulas;
 /// end is pushed past the last row by an insertion is cut at the last row; a reference that <see cref="Translate"/> moves off the sheet
 /// becomes <c>#REF!</c>.</para>
 /// </remarks>
-public static class FormulaReferences
+public static partial class FormulaReferences
 {
     private const string RefError = "#REF!";
+
+    /// <summary>
+    /// Returns <paramref name="formula"/> with every sheet prefix naming <paramref name="oldName"/> (compared with
+    /// <see cref="SheetNames.Comparer"/>) changed to <paramref name="newName"/>: the prefixes of references (<c>Sheet1!A1</c>), of
+    /// sheet-level names and errors (<c>Sheet1!MyName</c>, <c>Sheet1!#REF!</c>), and either end of a reference to several sheets
+    /// (<c>Sheet1:Sheet3!A1</c>). A changed prefix is written with quotes when the name needs them (<see cref="NeedsQuotes"/>), with
+    /// any apostrophe doubled; a reference to several sheets is quoted as a whole. Unqualified references, references to other
+    /// workbooks (<c>[1]Sheet1!A1</c>), text in double quotes and bracketed text are copied unchanged, and so are prefixes that do not
+    /// name the old sheet.
+    /// </summary>
+    /// <param name="formula">The formula text, with or without its leading <c>=</c>.</param>
+    /// <param name="oldName">The sheet's name before the rename.</param>
+    /// <param name="newName">The sheet's new name.</param>
+    public static string RenameSheet(string formula, string oldName, string newName)
+    {
+        ArgumentNullException.ThrowIfNull(formula);
+        ArgumentException.ThrowIfNullOrEmpty(oldName);
+        ArgumentException.ThrowIfNullOrEmpty(newName);
+        if (string.Equals(oldName, newName, StringComparison.Ordinal))
+        {
+            return formula;
+        }
+        StringBuilder? builder = null;
+        var copied = 0;
+        foreach (var token in FormulaTokenizer.Tokenize(formula))
+        {
+            if (token.SheetName is not { } name || token.PrefixLength == 0 || token.IsExternal)
+            {
+                continue;
+            }
+            string? prefix = null;
+            var colon = name.IndexOf(':', StringComparison.Ordinal);
+            if (token.IsMultiSheetOrExternal && colon >= 0)
+            {
+                var first = name[..colon];
+                var last = name[(colon + 1)..];
+                var renamedFirst = SheetNames.Comparer.Equals(first, oldName);
+                var renamedLast = SheetNames.Comparer.Equals(last, oldName);
+                if (renamedFirst || renamedLast)
+                {
+                    first = renamedFirst ? newName : first;
+                    last = renamedLast ? newName : last;
+                    var span = first + ":" + last;
+                    prefix = NeedsQuotes(first) || NeedsQuotes(last) ? Quote(span) : span;
+                }
+            }
+            else if (SheetNames.Comparer.Equals(name, oldName))
+            {
+                prefix = NeedsQuotes(newName) ? Quote(newName) : newName;
+            }
+            if (prefix is null)
+            {
+                continue;
+            }
+            builder ??= new StringBuilder(formula.Length + newName.Length);
+            builder.Append(formula, copied, token.Start - copied).Append(prefix).Append('!');
+            copied = token.Start + token.PrefixLength;
+        }
+        return builder is null ? formula : builder.Append(formula, copied, formula.Length - copied).ToString();
+    }
+
+    /// <summary>
+    /// Whether a sheet name must be quoted (<c>'My sheet'!A1</c>) in a reference. Not verified against ECMA-376's formula grammar
+    /// (Part 1 §18.17) or Excel; the rule errs toward quoting, which is always allowed: a name is left bare only when it is made of
+    /// letters, digits, <c>_</c> and <c>.</c>, does not start with a digit or <c>.</c>, and does not read as an A1 cell reference
+    /// (1–3 letters then digits, as <c>A1</c> or <c>Abc12</c>), an R1C1 reference (<c>R</c>, <c>C</c>, <c>R2</c>, <c>C3</c>,
+    /// <c>RC</c>, <c>R1C1</c>, in either case) or a boolean (<c>TRUE</c>, <c>FALSE</c>).
+    /// </summary>
+    internal static bool NeedsQuotes(string name)
+    {
+        if (name.Length == 0 || char.IsAsciiDigit(name[0]) || name[0] == '.')
+        {
+            return true;
+        }
+        foreach (var c in name)
+        {
+            if (!(char.IsLetterOrDigit(c) || c is '_' or '.'))
+            {
+                return true;
+            }
+        }
+        return CellLike().IsMatch(name)
+            || name.Equals("TRUE", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("FALSE", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string Quote(string name) => "'" + name.Replace("'", "''", StringComparison.Ordinal) + "'";
+
+    /// <summary>An A1 cell reference (1–3 letters then digits) or an R1C1 reference, in either case.</summary>
+    [GeneratedRegex(@"^(?:[A-Za-z]{1,3}[0-9]+|[Rr][0-9]*(?:[Cc][0-9]*)?|[Cc][0-9]*)$", RegexOptions.CultureInvariant)]
+    private static partial Regex CellLike();
 
     /// <summary>
     /// Returns <paramref name="formula"/> with its references to <see cref="RowShift.Sheet"/> moved for the inserted or deleted rows, as
