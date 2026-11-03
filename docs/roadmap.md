@@ -32,11 +32,12 @@ references are to `docs/spec.md`.
       deleted (absolute and relative, ranges, whole rows and columns, other sheets' references, `#REF!` for deleted cells; text in
       quotes untouched), and translate a formula by a row and column offset for shared formulas. Used by the writer (§9.20) and
       `feat/xlsx-shared-formulas`. Core only, with tests.
-- [ ] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
+- [x] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
       its references shifted), instead of their cached value (§9.3). Until then such cells show their value and are written back
       untouched unless edited. Depends on `feat/xlsx-read` and `feat/formula-references`.
-- [ ] `feat/xlsx-write`, in two PRs. Part A (`feat/xlsx-write`): values, sheets and clearing, with cards over their source rows;
-      part B (`feat/xlsx-write-rows`): row insertion and deletion, the name row, pictures, row heights and column widths. Together
+- [ ] `feat/xlsx-write`, in two PRs. Part A (`feat/xlsx-write`, #19, merged): values, sheets and clearing, with cards over their
+      source rows; part B in two PRs: `feat/xlsx-write-rows` (row insertion and deletion, the name row, moved and shared formulas,
+      sheet renames) and `feat/xlsx-write-pictures` (pictures, row heights, column widths, merges over picture rows). Together
       they write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
@@ -50,8 +51,8 @@ references are to `docs/spec.md`.
       orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
 
 ## M2: Editing in the core (cloud)
-- [ ] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`, #12, merged): the undo and redo stack, card and entry
-      operations and the modified flag; part 2 (`feat/editing-ops-values`): values, sheets, table name and picture layout. Operations on the model
+- [x] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`, #12): the undo and redo stack, card and entry
+      operations and the modified flag; part 2 (`feat/editing-ops-values`, #18): values, sheets, table name and picture layout. Operations on the model
       with undo and redo: cards (add above/below/end, duplicate, remove, move), entries
       (add, remove by identity, reorder, rename; never the last one, §9.33, §9.36–9.38), values (text, fill, text colour incl.
       automatic, pictures add/remove/reorder), sheets (add, rename in place, duplicate, remove, reorder, §9.30–9.32), table name,

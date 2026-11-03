@@ -154,6 +154,28 @@ public sealed class UndoHistoryTests
         Assert.IsFalse(history.IsModified);
     }
 
+    [TestMethod]
+    public void AMergedStepThatChangesNothingIsDropped()
+    {
+        var history = new UndoHistory();
+        history.Record(new TestEdit());
+        history.MarkSaved();
+        var typing = new TestEdit(mergeable: true);
+        history.Record(typing);
+        Assert.IsTrue(history.IsModified);
+
+        typing.IsEmpty = true;
+        history.Record(new TestEdit(mergeable: true));
+
+        Assert.IsFalse(history.IsModified, "back at the saved depth");
+        Assert.IsTrue(history.CanUndo, "the earlier step stays");
+        Assert.IsFalse(history.CanRedo);
+
+        var next = new TestEdit(mergeable: true);
+        history.Record(next);
+        Assert.AreSame(next, history.PopUndo(), "the next edit starts a new step");
+    }
+
     private sealed class TestEdit(bool mergeable = false) : IEdit
     {
         public IReadOnlyList<WorkbookChange> Apply() => [];
@@ -161,6 +183,9 @@ public sealed class UndoHistoryTests
         public IReadOnlyList<WorkbookChange> Revert() => [];
 
         public bool TryMerge(IEdit next) => mergeable && next is TestEdit { IsMergeable: true };
+
+        /// <summary>Set by a test to make the step say it changes nothing once merged.</summary>
+        public bool IsEmpty { get; set; }
 
         private bool IsMergeable => mergeable;
     }

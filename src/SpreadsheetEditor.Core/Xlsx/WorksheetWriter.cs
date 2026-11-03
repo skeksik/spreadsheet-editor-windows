@@ -605,8 +605,8 @@ internal sealed class WorksheetWriter
     private void WriteMetadata()
     {
         var layout = sheet.ImageLayout;
-        var perRow = layout.ImagesPerRow * layout.Width > LayoutMetadata.MaxRowWidth
-            ? LayoutMetadata.MaxImagesPerRow(layout.Width)
+        var perRow = layout.ImagesPerRow * layout.Width > PictureLimits.MaxRowWidth
+            ? PictureLimits.MaxImagesPerRow(layout.Width)
             : layout.ImagesPerRow;
         string[] texts =
         [
