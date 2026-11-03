@@ -71,35 +71,57 @@ internal static class ResourceCheck
 
     /// <summary>
     /// Temporary (feat/app-localisation, until the smoke check passes on CI): what the resource system sees, to tell a PRI without the
-    /// Russian strings from a lookup that ignores the language. Written to the smoke log only when the check fails.
+    /// Russian strings from a lookup that ignores the language. Written to the smoke log only when the check fails. Each line is computed
+    /// on its own, so a null collection or an exception in one cannot hide the others.
     /// </summary>
-    private static IEnumerable<string> Diagnostics(ResourceManager manager, ResourceMap? strings, string? name)
+    private static List<string> Diagnostics(ResourceManager manager, ResourceMap? strings, string? name)
     {
-        yield return "diagnostics:";
-        yield return $"  PrimaryLanguageOverride = '{ApplicationLanguages.PrimaryLanguageOverride}'";
-        yield return $"  ApplicationLanguages.Languages = [{string.Join(", ", ApplicationLanguages.Languages)}]";
-        yield return $"  ApplicationLanguages.ManifestLanguages = [{string.Join(", ", ApplicationLanguages.ManifestLanguages)}]";
-        foreach (string pri in Directory.EnumerateFiles(AppContext.BaseDirectory, "*.pri"))
+        var lines = new List<string> { "diagnostics:" };
+        void Line(string label, Func<string?> value)
+        {
+            string text;
+            try
+            {
+                text = value() ?? "<null>";
+            }
+            catch (Exception e)
+            {
+                text = $"<{e.GetType().Name}: {e.Message}>";
+            }
+            lines.Add($"  {label} = {text}");
+        }
+
+        Line("PrimaryLanguageOverride", () => $"'{ApplicationLanguages.PrimaryLanguageOverride}'");
+        Line("ApplicationLanguages.Languages", () => Join(ApplicationLanguages.Languages));
+        Line("ApplicationLanguages.ManifestLanguages", () => Join(ApplicationLanguages.ManifestLanguages));
+        Line("PRI files", () => string.Join("; ", Directory.EnumerateFiles(AppContext.BaseDirectory, "*.pri").Select(pri =>
         {
             byte[] bytes = File.ReadAllBytes(pri);
-            yield return $"  {Path.GetFileName(pri)}: {bytes.Length} bytes, Cyrillic text: UTF-16 {HasCyrillicUtf16(bytes)}, UTF-8 {HasCyrillicUtf8(bytes)}";
-        }
-        ResourceContext russian = Context(manager, UiLanguage.Russian);
-        yield return $"  ru context QualifierValues = {Dump(russian.QualifierValues)}";
-        yield return $"  default context QualifierValues = {Dump(manager.CreateResourceContext().QualifierValues)}";
+            return $"{Path.GetFileName(pri)}: {bytes.Length} bytes, Cyrillic UTF-16 {HasCyrillicUtf16(bytes)}, UTF-8 {HasCyrillicUtf8(bytes)}";
+        })));
+        Line("ru context QualifierValues", () => Dump(Context(manager, UiLanguage.Russian).QualifierValues));
+        Line("default context QualifierValues", () => Dump(manager.CreateResourceContext().QualifierValues));
         if (strings is null || name is null)
         {
-            yield break;
+            return lines;
         }
-        yield return $"  '{name}' via QualifierValues ru-RU: '{strings.TryGetValue(name, russian)?.ValueAsString}'";
-        ResourceContext neutral = manager.CreateResourceContext();
-        neutral.QualifierValues["Language"] = "ru";
-        yield return $"  '{name}' via QualifierValues ru: '{strings.TryGetValue(name, neutral)?.ValueAsString}'";
-        yield return $"  '{name}' via ResourceLoader (process language): '{new ResourceLoader().GetString(name)}'";
+        Line($"'{name}' via QualifierValues ru-RU", () => $"'{strings.TryGetValue(name, Context(manager, UiLanguage.Russian))?.ValueAsString}'");
+        Line($"'{name}' via QualifierValues ru", () => $"'{strings.TryGetValue(name, Context(manager, "ru"))?.ValueAsString}'");
+        Line($"'{name}' via QualifierValues en-US", () => $"'{strings.TryGetValue(name, Context(manager, UiLanguage.English))?.ValueAsString}'");
+        Line($"'{name}' via ResourceLoader (process language)", () => $"'{new ResourceLoader().GetString(name)}'");
+        Line("ru context Language after the lookup", () =>
+        {
+            ResourceContext context = Context(manager, UiLanguage.Russian);
+            _ = strings.TryGetValue(name, context);
+            return context.QualifierValues is { } values && values.TryGetValue("Language", out string? language) ? language : null;
+        });
+        return lines;
     }
 
-    private static string Dump(IDictionary<string, string> values) =>
-        string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}"));
+    private static string? Join(IEnumerable<string>? values) => values is null ? null : $"[{string.Join(", ", values)}]";
+
+    private static string? Dump(IDictionary<string, string>? values) =>
+        values is null ? null : string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value ?? "<null>"}"));
 
     // Two or more Cyrillic letters (U+0410-U+044F) in a row, little-endian UTF-16.
     private static bool HasCyrillicUtf16(byte[] bytes)
