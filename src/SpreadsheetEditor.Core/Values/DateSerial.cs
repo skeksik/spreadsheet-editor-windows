@@ -18,7 +18,8 @@ namespace SpreadsheetEditor.Core.Values;
 /// ECMA-376 Part 1 §18.17.4 describes the same date systems; it was not read for this code (not verified against it).
 /// <para>
 /// A serial below 1 has no date part: it is a time of day only, and is represented by that time on <see cref="DateTime.MinValue"/>'s day
-/// (1 January 0001) in both date systems.
+/// (1 January 0001) in both date systems. In the 1904 system serial 0 is also a real date, 1 January 1904, which this reads as midnight
+/// only; the reader decides between a date and a time by the cell's number format (<see cref="NumberFormats.Classify"/>).
 /// </para>
 /// </remarks>
 public static class DateSerial

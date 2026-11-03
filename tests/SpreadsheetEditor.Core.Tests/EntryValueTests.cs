@@ -85,4 +85,37 @@ public sealed class EntryValueTests
         Assert.AreEqual(CellValueKind.Text, text.Kind);
         Assert.IsNull(text.Format);
     }
+
+    [TestMethod]
+    [DataRow("1/2")]
+    [DataRow("15.01.2024")]
+    [DataRow("007")]
+    [DataRow("42")]
+    [DataRow("TRUE")]
+    [DataRow("=A1+1")]
+    public void ACellFormattedAsTextKeepsWhatIsTyped(string typed)
+    {
+        foreach (NumberFormat format in new[] { new NumberFormat(49), new NumberFormat(164, "@") })
+        {
+            var original = new CellValue(CellValueKind.Text, "old", Format: format);
+            CellValue? value = EntryValue.Resolve(new Entry { Text = typed, Original = original }, Russian);
+            Assert.IsNotNull(value);
+            Assert.AreEqual(CellValueKind.Text, value.Kind);
+            Assert.AreEqual(typed, value.DisplayText);
+            Assert.IsNull(value.Formula);
+            Assert.IsNull(value.Format);
+        }
+    }
+
+    [TestMethod]
+    public void RecognisesTheTextFormat()
+    {
+        Assert.IsTrue(NumberFormats.IsText(new NumberFormat(49)));
+        Assert.IsTrue(NumberFormats.IsText(new NumberFormat(164, "@")));
+        Assert.IsTrue(NumberFormats.IsText(NumberFormats.Text));
+        Assert.IsFalse(NumberFormats.IsText(new NumberFormat(0)));
+        Assert.IsFalse(NumberFormats.IsText(new NumberFormat(49, "0.00")));
+        Assert.IsFalse(NumberFormats.IsText(new NumberFormat(164, "0;-0;0;@")));
+        Assert.IsFalse(NumberFormats.IsText(null));
+    }
 }

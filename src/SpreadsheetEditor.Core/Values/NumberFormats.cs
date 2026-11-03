@@ -28,6 +28,17 @@ public static class NumberFormats
     /// <summary>The default format for a typed time with seconds: built-in 21, <c>h:mm:ss</c>.</summary>
     public static NumberFormat LongTime { get; } = new(21);
 
+    /// <summary>The Text format: built-in 49, <c>@</c>.</summary>
+    public static NumberFormat Text { get; } = new(49);
+
+    /// <summary>
+    /// Whether this is the Text format: built-in id 49 without a code, or the code <c>@</c>. Microsoft, "Available number formats in
+    /// Excel" (read 2026-11-03), Text: "Treats the content of a cell as text and displays the content exactly as you type it, even when
+    /// you type numbers."
+    /// </summary>
+    public static bool IsText(NumberFormat? format) =>
+        format is not null && (format.Code is { } code ? code.Trim() == "@" : format.Id == 49);
+
     /// <summary>Whether a number in this format is a date or a time (any kind but <see cref="DateTimeFormatKind.None"/>).</summary>
     public static bool IsDateOrTime(NumberFormat? format) => Classify(format) != DateTimeFormatKind.None;
 

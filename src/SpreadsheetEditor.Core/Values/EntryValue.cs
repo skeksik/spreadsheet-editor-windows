@@ -11,6 +11,7 @@ public static class EntryValue
     /// <list type="bullet">
     /// <item>While the text equals the original value's display text, the original value, never parsed again.</item>
     /// <item>Empty text: null, the cell is cleared.</item>
+    /// <item>In a cell formatted as Text (<see cref="NumberFormats.IsText"/>), the text as typed, never parsed.</item>
     /// <item>Otherwise the text parsed for the culture (<see cref="CellText.Parse"/>). A date keeps the original number format when that is
     /// a date or time format, and otherwise gets the default for what was typed (<see cref="NumberFormats"/>). A number or boolean typed
     /// into a cell with a date or time format gets <see cref="NumberFormat.General"/>, so that it is not shown as a date. Other values
@@ -30,6 +31,12 @@ public static class EntryValue
         if (entry.Text.Length == 0)
         {
             return null;
+        }
+
+        // A cell formatted as Text keeps what is typed as text, as Excel does (NumberFormats.IsText).
+        if (NumberFormats.IsText(original?.Format))
+        {
+            return new CellValue(CellValueKind.Text, entry.Text);
         }
 
         CellValue parsed = CellText.Parse(entry.Text, culture);
