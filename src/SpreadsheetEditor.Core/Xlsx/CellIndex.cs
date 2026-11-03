@@ -52,22 +52,7 @@ internal sealed class CellIndex
             return existing;
         }
 
-        if (!rows.TryGetValue(row, out var rowElement))
-        {
-            rowElement = new X.Row { RowIndex = (uint)row };
-            var next = rows.FirstOrDefault(pair => pair.Key > row).Value;
-            if (next is null)
-            {
-                data.AppendChild(rowElement);
-            }
-            else
-            {
-                data.InsertBefore(rowElement, next);
-            }
-
-            rows[row] = rowElement;
-        }
-
+        var rowElement = Row(row);
         var cell = new X.Cell { CellReference = Name(row, column) };
         X.Cell? after = null;
         foreach (var other in rowElement.Elements<X.Cell>())
@@ -90,6 +75,28 @@ internal sealed class CellIndex
 
         cells[Key(row, column)] = cell;
         return cell;
+    }
+
+    /// <summary>The row element, created in document order when it is missing.</summary>
+    public X.Row Row(int row)
+    {
+        if (!rows.TryGetValue(row, out var rowElement))
+        {
+            rowElement = new X.Row { RowIndex = (uint)row };
+            var next = rows.FirstOrDefault(pair => pair.Key > row).Value;
+            if (next is null)
+            {
+                data.AppendChild(rowElement);
+            }
+            else
+            {
+                data.InsertBefore(rowElement, next);
+            }
+
+            rows[row] = rowElement;
+        }
+
+        return rowElement;
     }
 
     public static string Name(int row, int column) => CellReference.ColumnName(column) + row.ToString(CultureInfo.InvariantCulture);

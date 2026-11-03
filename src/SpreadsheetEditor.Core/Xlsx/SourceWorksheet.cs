@@ -15,6 +15,7 @@ internal sealed class SourceWorksheet
     public SourceWorksheet(WorksheetPart part, WorksheetCells reader, CancellationToken cancellationToken)
     {
         Grid = reader.Read(part, cancellationToken);
+        Pictures = DrawingPictures.Read(part, cancellationToken);
         var index = new CellIndex(part.Worksheet ?? new X.Worksheet());
         foreach (var (row, column, cell) in index.All)
         {
@@ -42,6 +43,9 @@ internal sealed class SourceWorksheet
     public static SourceWorksheet Empty { get; } = new();
 
     public CellGrid Grid { get; }
+
+    /// <summary>The pictures anchored to the worksheet's cells as read, in file order (<see cref="DrawingPictures"/>).</summary>
+    public IReadOnlyList<AnchoredPicture> Pictures { get; } = [];
 
     /// <summary>The style a cell shows as read: its own, else its row's or column's (<see cref="CellGrid.StyleIndex"/>).</summary>
     public uint Style(int row, int column) => Grid.StyleIndex(row, column);

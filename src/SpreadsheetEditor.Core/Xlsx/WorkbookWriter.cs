@@ -245,7 +245,9 @@ internal sealed class WorkbookWriter
             {
                 var source = SourceOf(id);
                 var slots = CardGrouping.Group(plan.Sheet.FirstDataRow, origin.LastRow, origin.FirstColumn, origin.LastColumn, source.Grid.Merges);
-                plan.Rows = RowPlan.Create(plan.Sheet, origin, slots);
+                var pictures = SheetPictures.ForSource(plan.Sheet, origin, source, slots);
+                plan.Pictures = pictures;
+                plan.Rows = RowPlan.Create(plan.Sheet, origin, slots, pictures.RowsNeeded);
                 references.AddShifts(plan.Sheet.Name, plan.Rows.Shifts);
             }
         }
@@ -280,7 +282,7 @@ internal sealed class WorkbookWriter
             cancellationToken.ThrowIfCancellationRequested();
             var part = (WorksheetPart)workbookPart.GetPartById(plan.Entry!.Id!.Value!);
             var source = plan.SourceId is { } id ? SourceOf(id) : SourceWorksheet.Empty;
-            WorksheetWriter.Write(plan.Sheet, part.Worksheet!, source, context, plan.Rows);
+            WorksheetWriter.Write(plan.Sheet, part, source, context, plan.Rows, plan.Pictures ?? SheetPictures.ForNewSheet(plan.Sheet));
         }
 
         AddPrintAreas(root, order, plans);
@@ -768,5 +770,8 @@ internal sealed class WorkbookWriter
 
         /// <summary>Where the table's rows go; null for a new sheet.</summary>
         public RowPlan? Rows { get; set; }
+
+        /// <summary>Which values keep their pictures as read; null for a new sheet, whose pictures are all laid out.</summary>
+        public SheetPictures? Pictures { get; set; }
     }
 }

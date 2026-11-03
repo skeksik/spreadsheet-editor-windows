@@ -1,6 +1,8 @@
 using System.Globalization;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using SpreadsheetEditor.Core.Formulas;
+using SpreadsheetEditor.Core.Imaging;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
@@ -21,15 +23,23 @@ internal sealed class WorksheetWriter
     private readonly SourceWorksheet source;
     private readonly WriteContext context;
     private readonly RowPlan? plan;
+    private readonly SheetPictures pictures;
+    private readonly DrawingWriter drawing;
+
+    /// <summary>The table columns (0-based) holding a value whose pictures were laid out again: they are widened for them.</summary>
+    private readonly SortedSet<int> laidOutColumns = [];
 
     /// <summary>The table's columns as read; cells to their right that are not part of the old table are not overwritten.</summary>
     private readonly int sourceLastColumn;
 
-    private WorksheetWriter(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context, RowPlan? plan)
+    private WorksheetWriter(
+        Sheet sheet, WorksheetPart part, SourceWorksheet source, WriteContext context, RowPlan? plan, SheetPictures pictures)
     {
         this.sheet = sheet;
         this.plan = plan;
-        this.worksheet = worksheet;
+        this.pictures = pictures;
+        worksheet = part.Worksheet!;
+        drawing = new DrawingWriter(part, sheet.Name);
         this.source = source;
         this.context = context;
         cells = new CellIndex(worksheet);
@@ -38,12 +48,12 @@ internal sealed class WorksheetWriter
 
     /// <summary>
     /// Writes a sheet read from <c>.xlsx</c> into its table's rows as <paramref name="plan"/> moved them, or a new sheet (no plan) into an
-    /// empty worksheet.
+    /// empty worksheet, with the pictures <paramref name="pictures"/> lays out again.
     /// </summary>
-    public static void Write(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context, RowPlan? plan)
+    public static void Write(Sheet sheet, WorksheetPart part, SourceWorksheet source, WriteContext context, RowPlan? plan, SheetPictures pictures)
     {
         Validate(sheet);
-        var writer = new WorksheetWriter(sheet, worksheet, source, context, plan);
+        var writer = new WorksheetWriter(sheet, part, source, context, plan, pictures);
         if (sheet.Source is { } origin && plan is not null)
         {
             writer.WriteOverSource(origin, plan);
@@ -53,6 +63,8 @@ internal sealed class WorksheetWriter
             writer.WriteNew();
         }
 
+        writer.WidenPictureColumns();
+        writer.drawing.Finish();
         writer.WriteMetadata();
     }
 
@@ -156,13 +168,6 @@ internal sealed class WorksheetWriter
         {
             var entry = card.Entries[j];
             var target = sheet.FirstColumn + j;
-            if (entry.Images.Count > 0 && (!rows.IsKept || sheet.Columns[j].SourceIndex != j))
-            {
-                // Pictures are anchored in the drawing, not in the cell: laying them out in other cells is part B2 of the writer.
-                throw SpreadsheetWriteException.NotSupported(
-                    $"A card or entry with pictures on the sheet \"{sheet.Name}\" was added, duplicated or moved to another column; pictures cannot be laid out yet.");
-            }
-
             // A duplicated card's values come from the card it copies, as read: unedited ones are copied (formulas translated).
             (int Row, int Column)? from = (rows.SourceFirstRow ?? card.CopiedFromRow) is { } first && sheet.Columns[j].SourceIndex is { } index
                 ? (first, origin.FirstColumn + index)
@@ -174,6 +179,73 @@ internal sealed class WorksheetWriter
         if (rows.Rows > rows.OwnRows && rows.Rows > 1)
         {
             MergeCard(rows);
+        }
+
+        WritePictures(card, rows, origin);
+    }
+
+    /// <summary>
+    /// Lays out again the pictures of the card's values that do not keep theirs as read (<see cref="SheetPictures.Keeps"/>): the pictures
+    /// the app owns in the value's cell, over the card's rows, are removed, and the value's pictures are anchored as
+    /// <see cref="PictureLayout.ForCard"/> places them (§5.4). When any of them has pictures, the card's rows get their heights (§5.3 step 5).
+    /// </summary>
+    private void WritePictures(Card card, RowPlan.CardRows rows, SheetSource? origin)
+    {
+        var layout = pictures.ForCard(card);
+        var lastRow = rows.FirstRow + rows.Rows - 1;
+        var laidOut = false;
+        for (var j = 0; j < sheet.Columns.Count; j++)
+        {
+            if (pictures.Keeps(card, rows.SourceFirstRow, j))
+            {
+                continue;
+            }
+
+            var column = sheet.FirstColumn + j;
+            if (origin is not null && column >= origin.FirstColumn && column <= origin.LastColumn)
+            {
+                // Only pictures in the table's columns as read are the app's: a picture beside the table is not removed.
+                drawing.RemoveOwned(rows.FirstRow, lastRow, column, column);
+            }
+
+            foreach (var placement in layout.Placements[j])
+            {
+                drawing.Add(placement, rows.FirstRow + placement.RowOffset, column);
+            }
+
+            if (layout.Placements[j].Count > 0)
+            {
+                laidOut = true;
+                laidOutColumns.Add(j);
+            }
+        }
+
+        if (!laidOut)
+        {
+            return;
+        }
+
+        var heights = layout.RowHeightsPoints;
+        for (var i = 0; i < heights.Count && i < rows.Rows; i++)
+        {
+            if (heights[i] is { } points)
+            {
+                var row = cells.Row(rows.FirstRow + i);
+                row.Height = points;
+                row.CustomHeight = true;
+            }
+        }
+    }
+
+    /// <summary>Widens the table columns whose pictures were laid out again to their pictures' width (§5.2 step 8).</summary>
+    private void WidenPictureColumns()
+    {
+        foreach (var j in laidOutColumns)
+        {
+            if (pictures.Layout.Columns[j].WidthTargetPx is { } target)
+            {
+                ColumnWidthWriter.Widen(worksheet, sheet.FirstColumn + j, target);
+            }
         }
     }
 
@@ -554,6 +626,9 @@ internal sealed class WorksheetWriter
             }
         }
 
+        // The removed entries' pictures go with them (§9.19); pictures in the name or header row are not the app's and stay.
+        drawing.RemoveOwned(rows.FirstDataRow, lastTableRow, firstCleared, origin.LastColumn);
+
         if (worksheet.GetFirstChild<X.MergeCells>() is not { } merges)
         {
             return;
@@ -608,7 +683,16 @@ internal sealed class WorksheetWriter
                 WriteEntry(card.Entries[j], row, sheet.FirstColumn + j, null, inPlace: false);
             }
 
-            row++;
+            // A card with pictures takes the rows they need, merged in the table columns (§5.3 step 3); any other card takes one row.
+            var layout = pictures.ForCard(card);
+            var rows = new RowPlan.CardRows(row, layout.HasPictures ? Math.Max(1, layout.WorksheetRowsNeeded) : 1, null, 0);
+            if (rows.Rows > 1)
+            {
+                MergeCard(rows);
+            }
+
+            WritePictures(card, rows, null);
+            row += rows.Rows;
         }
     }
 

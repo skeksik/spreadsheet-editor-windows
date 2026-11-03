@@ -55,7 +55,15 @@ internal sealed class RowPlan
     /// <summary>True when any row moves, is inserted or is deleted.</summary>
     public bool ChangesRows { get; private set; }
 
-    public static RowPlan Create(Sheet sheet, SheetSource origin, List<(int FirstRow, int RowSpan)> slots)
+    /// <param name="sheet">The sheet as it is written.</param>
+    /// <param name="origin">Where its table was as read.</param>
+    /// <param name="slots">The cards' rows as read, as (first row, row count) pairs.</param>
+    /// <param name="pictureRows">
+    /// The worksheet rows a card needs for its pictures, given the first row as read of the rows it keeps (null for a card in new rows);
+    /// 0 when its pictures need none. A card gets them when it has fewer (§5.3 step 3); rows are never deleted for fewer pictures.
+    /// </param>
+    public static RowPlan Create(
+        Sheet sheet, SheetSource origin, List<(int FirstRow, int RowSpan)> slots, Func<Card, int?, int>? pictureRows = null)
     {
         var firstTableRow = sheet.HeaderRow ?? sheet.FirstDataRow;
         var hasNameRow = origin.FirstRow < firstTableRow;
@@ -89,11 +97,13 @@ internal sealed class RowPlan
             if (card.SourceFirstRow is { } first && slotIndex.TryGetValue(first, out var index) && !claimed[index])
             {
                 claimed[index] = true;
-                layout.Add((index, Math.Max(slots[index].RowSpan, card.SourceRowSpan)));
+                var need = pictureRows?.Invoke(card, slots[index].FirstRow) ?? 0;
+                layout.Add((index, Math.Max(Math.Max(slots[index].RowSpan, card.SourceRowSpan), need)));
             }
             else
             {
-                layout.Add((null, Math.Max(1, card.SourceRowSpan)));
+                var need = pictureRows?.Invoke(card, null) ?? 0;
+                layout.Add((null, Math.Max(Math.Max(1, card.SourceRowSpan), need)));
             }
         }
 
