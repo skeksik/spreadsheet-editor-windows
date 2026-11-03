@@ -17,4 +17,12 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// <param name="LastColumn">The table's last column.</param>
 /// <param name="IsCopy">True for a duplicated sheet: its worksheet is a copy of this one, made when the workbook is written.</param>
 internal sealed record SheetSource(
-    string RelationshipId, uint SheetId, int FirstRow, int LastRow, int FirstColumn, int LastColumn, bool IsCopy = false);
+    string RelationshipId, uint SheetId, int FirstRow, int LastRow, int FirstColumn, int LastColumn, bool IsCopy = false)
+{
+    /// <summary>
+    /// The worksheet's shared formula groups and their cells, by worksheet position as read, over the whole sheet: the writer leaves an
+    /// unedited cell of a group as it is, takes an edited dependent out of its group, and gives the other cells of an edited master's
+    /// group their own formula.
+    /// </summary>
+    public SharedFormulaMap SharedFormulas { get; init; } = SharedFormulaMap.Empty;
+}

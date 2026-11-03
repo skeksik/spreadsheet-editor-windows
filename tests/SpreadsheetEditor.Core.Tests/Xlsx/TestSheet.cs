@@ -68,7 +68,26 @@ internal sealed class TestSheet
     }
 
     /// <summary>Sets a cell with a formula and its cached value (a number, a string or a bool).</summary>
-    public TestSheet Formula(string reference, string formula, object cached)
+    public TestSheet Formula(string reference, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula), cached);
+
+    /// <summary>Sets a shared formula's master cell: <c>&lt;f t="shared" ref="range" si="index"&gt;formula&lt;/f&gt;</c>.</summary>
+    public TestSheet SharedMaster(string reference, uint index, string range, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Shared, Reference = range, SharedIndex = index }, cached);
+
+    /// <summary>Sets one of a shared formula's other cells: <c>&lt;f t="shared" si="index"/&gt;</c> and its cached value.</summary>
+    public TestSheet Shared(string reference, uint index, object cached) =>
+        FormulaCell(reference, new X.CellFormula { FormulaType = X.CellFormulaValues.Shared, SharedIndex = index }, cached);
+
+    /// <summary>Sets an array formula's top-left cell: <c>&lt;f t="array" ref="range"&gt;formula&lt;/f&gt;</c>.</summary>
+    public TestSheet ArrayFormula(string reference, string range, string formula, object cached) =>
+        FormulaCell(reference, new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Array, Reference = range }, cached);
+
+    /// <summary>Sets a data table's top-left cell: <c>&lt;f t="dataTable" ref="range" r1="input"/&gt;</c>, without text.</summary>
+    public TestSheet DataTable(string reference, string range, string input, object cached) =>
+        FormulaCell(reference, new X.CellFormula { FormulaType = X.CellFormulaValues.DataTable, Reference = range, R1 = input }, cached);
+
+    private TestSheet FormulaCell(string reference, X.CellFormula formula, object cached)
     {
         var cell = cached switch
         {
@@ -76,7 +95,7 @@ internal sealed class TestSheet
             bool flag => new X.Cell { DataType = X.CellValues.Boolean, CellValue = new X.CellValue(flag ? "1" : "0") },
             _ => new X.Cell { CellValue = new X.CellValue(Convert.ToString(cached, CultureInfo.InvariantCulture)!) },
         };
-        cell.CellFormula = new X.CellFormula(formula);
+        cell.CellFormula = formula;
         return Put(reference, cell, 0);
     }
 

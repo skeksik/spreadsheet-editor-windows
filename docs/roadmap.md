@@ -21,14 +21,14 @@ references are to `docs/spec.md`.
 - [x] `feat/cell-values`: a value's text for a culture and edited text parsed back: numbers, booleans, dates and times in the short
       date format, formulas as `=source`, the cell's number format kept (§4.2, §9.2–9.4). `CellValue` gains a formula and a number
       format. Core only, with tests in en-US and ru-RU.
-- [ ] `feat/xlsx-read`: open an `.xlsx` with the Open XML SDK and build the model: table detection with metadata cells ignored
+- [x] `feat/xlsx-read`: open an `.xlsx` with the Open XML SDK and build the model: table detection with metadata cells ignored
       and the hidden-header test (§4.1, §9.1, §9.9), values with their types, dates and formulas (§4.2, §9.2–9.3), merged-row
       grouping by table merges only (§4.3, §9.7), theme and indexed colours with tint and automatic text colour (§4.4, §9.5–9.6),
       fonts and alignment, pictures anchored to cells, layout metadata clamped (§4.5, §9.50); unsupported sheets skipped and kept
       (§9.10, §9.12), hidden worksheets read (§9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's
-      text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets; #9,
-      merged), then `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
-- [ ] `feat/formula-references`: pure functions over formula text: shift the references when worksheet rows are inserted or
+      text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets; #9),
+      then `feat/xlsx-read-styles` (colours, fonts, alignment, pictures; #14).
+- [x] `feat/formula-references`: pure functions over formula text: shift the references when worksheet rows are inserted or
       deleted (absolute and relative, ranges, whole rows and columns, other sheets' references, `#REF!` for deleted cells; text in
       quotes untouched), and translate a formula by a row and column offset for shared formulas. Used by the writer (§9.20) and
       `feat/xlsx-shared-formulas`. Core only, with tests.
@@ -50,8 +50,8 @@ references are to `docs/spec.md`.
       orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
 
 ## M2: Editing in the core (cloud)
-- [ ] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`): the undo and redo stack, card and entry operations and the
-      modified flag; part 2 (`feat/editing-ops-values`): values, sheets, table name and picture layout. Operations on the model
+- [ ] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`, #12, merged): the undo and redo stack, card and entry
+      operations and the modified flag; part 2 (`feat/editing-ops-values`): values, sheets, table name and picture layout. Operations on the model
       with undo and redo: cards (add above/below/end, duplicate, remove, move), entries
       (add, remove by identity, reorder, rename; never the last one, §9.33, §9.36–9.38), values (text, fill, text colour incl.
       automatic, pictures add/remove/reorder), sheets (add, rename in place, duplicate, remove, reorder, §9.30–9.32), table name,
