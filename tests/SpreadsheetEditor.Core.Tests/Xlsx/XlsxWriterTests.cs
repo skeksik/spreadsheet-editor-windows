@@ -79,7 +79,12 @@ public sealed class XlsxWriterTests
         AssertSequence(after.SheetNames, "Plants", "Empty", "Chart", "Tools");
         AssertSameXml(before.Part("Empty"), after.Part("Empty"));
         AssertSameXml(before.WorkbookPart.WorkbookStylesPart!, after.WorkbookPart.WorkbookStylesPart!);
-        Assert.AreEqual(before.Workbook.DefinedNames!.OuterXml, after.Workbook.DefinedNames!.OuterXml);
+        // The defined names are as they were; the sheet without a print area gets one over its table (§5.7).
+        var namesBefore = before.Workbook.DefinedNames!.Elements<X.DefinedName>().Select(n => n.OuterXml).ToList();
+        var namesAfter = after.Workbook.DefinedNames!.Elements<X.DefinedName>().Select(n => n.OuterXml).ToList();
+        CollectionAssert.AreEqual(namesBefore, namesAfter.Take(namesBefore.Count).ToList());
+        var added = after.Workbook.DefinedNames!.Elements<X.DefinedName>().Last();
+        Assert.AreEqual(("_xlnm.Print_Area", "Tools!$A$1:$A$2", 3u), (added.Name!.Value, added.Text, added.LocalSheetId!.Value));
         // Every cell of the table, the formula and the cell beside it are as they were; only the metadata cells were added.
         var cellsBefore = before.Worksheet("Plants").Descendants<X.Cell>().Select(c => c.OuterXml).ToList();
         var cellsAfter = after.Worksheet("Plants").Descendants<X.Cell>().Where(c => !c.CellReference!.Value!.StartsWith("XFD", StringComparison.Ordinal))
@@ -201,14 +206,22 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void EditingASharedFormulaCellThatOthersUseIsNotSupported()
+    public void EditingASharedFormulaMasterGivesTheOtherCellsTheirOwnFormula()
     {
         var book = new TestWorkbook();
-        book.AddSheet("Sums").Row("A1", "Name", "Double").Row("A2", "One").Row("A3", "Two")
-            .SharedFormula("B2", "ROW()*2", "B2:B3", 4).SharedDependent("B3", 6);
+        book.AddSheet("Sums").Row("A1", "Name", "Double").Row("A2", "One", null, 1).Row("A3", "Two", null, 2)
+            .SharedFormula("B2", "C2*2", "B2:B3", 2).SharedDependent("B3", 4);
         var original = book.ToBytes();
 
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w => w.Sheets[0].Cards[0].Entries[1].Text = "5"));
+        var edited = Change(original, w => w.Sheets[0].Cards[0].Entries[1].Text = "5");
+        using (var package = new XlsxPackage(edited))
+        {
+            Assert.AreEqual("5", package.Text("Sums", "B2"));
+            var formula = package.Cell("Sums", "B3")!.CellFormula!;
+            Assert.AreEqual("C3*2", formula.Text);
+            Assert.IsNull(formula.FormulaType);
+            Assert.IsNull(formula.SharedIndex);
+        }
 
         // A cell that only uses the shared formula may be changed: it leaves the group.
         var bytes = Change(original, w => w.Sheets[0].Cards[1].Entries[1].Text = "5");
@@ -323,12 +336,6 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void NamingATableWithoutANameRowIsNotSupported()
-    {
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(Plants().ToBytes(), w => w.Sheets[0].TableName = "Garden"));
-    }
-
-    [TestMethod]
     public void ARemovedEntryClearsItsColumnAndMerges()
     {
         var book = new TestWorkbook();
@@ -386,15 +393,6 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void AMovedFormulaIsNotSupported()
-    {
-        var book = new TestWorkbook();
-        book.AddSheet("Sums").Row("A1", "Name", "Value").Row("A2", "One", 1).Formula("B3", "B2+1", 2).Set("A3", "Two");
-
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(book.ToBytes(), w => w.Sheets[0].Cards.Reverse()));
-    }
-
-    [TestMethod]
     public void CardsOfEqualSpansCanBeReordered()
     {
         var original = Plants().ToBytes();
@@ -405,21 +403,6 @@ public sealed class XlsxWriterTests
         AssertSequence(Texts(back.Cards[0]), "Rose", "Red", "45");
         AssertSequence(Texts(back.Cards[1]), "Fern", "Green", "30");
         Assert.AreEqual(CellValueKind.Number, back.Cards[0].Entries[2].Original!.Kind);
-    }
-
-    [TestMethod]
-    public void ChangesThatNeedRowsInsertedOrDeletedAreNotSupported()
-    {
-        var original = Plants().ToBytes();
-
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w => w.Sheets[0].Cards.RemoveAt(0)));
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w =>
-        {
-            var card = new Card();
-            card.Entries.AddRange([new Entry(), new Entry(), new Entry()]);
-            w.Sheets[0].Cards.Add(card);
-        }));
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w => w.Sheets[0].Cards[0].SourceRowSpan = 2));
     }
 
     [TestMethod]
@@ -440,22 +423,20 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void AMovedMultiRowCardWithLaterRowValuesIsNotSupported()
-    {
-        var book = new TestWorkbook();
-        book.AddSheet("Plants").Row("A1", "Name", "Note").Row("A2", "Fern").Row("B3", "later").Merge("A2:A3").Row("A4", "Rose").Merge("A4:A5");
-        var original = book.ToBytes();
-
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w => w.Sheets[0].Cards.Reverse()));
-    }
-
-    [TestMethod]
-    public void MovingACardWithPicturesIsNotSupported()
+    public void MovingAnEntryWithPicturesIsNotSupported()
     {
         var book = new TestWorkbook();
         book.AddSheet("Plants").Row("A1", "Name", "Photo").Row("A2", "Fern").Row("A3", "Rose").Picture("B2", PictureBytes.Png(4, 3));
 
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(book.ToBytes(), w => w.Sheets[0].Cards.Reverse()));
+        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(book.ToBytes(), w =>
+        {
+            var sheet = w.Sheets[0];
+            sheet.Columns.Reverse();
+            foreach (var card in sheet.Cards)
+            {
+                card.Entries.Reverse();
+            }
+        }));
     }
 
     [TestMethod]
@@ -604,18 +585,38 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void RenamingASheetThatFormulasReferToIsNotSupported()
+    public void RenamingASheetRewritesTheReferencesToIt()
     {
         var book = Plants();
-        book.AddSheet("Sums").Row("A1", "Name", "Total").Row("A2", "All").Formula("B2", "SUM(Plants!C2:C3)", 75);
+        book.AddSheet("Sums").Row("A1", "Name", "Total").Row("A2", "All").Formula("B2", "SUM(Plants!C2:C3)+LEN(\"Plants!A1\")", 75);
+        book.AddDefinedName("Heights", "'Plants'!$C$2:$C$3");
         var original = book.ToBytes();
-        var named = Plants();
-        named.AddDefinedName("Heights", "'Plants'!$C$2:$C$3");
 
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(original, w => w.Sheets[0].Name = "Garden"));
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(named.ToBytes(), w => w.Sheets[0].Name = "Garden"));
-        // The other sheet's formula does not refer to itself: renaming that one is fine.
-        Change(original, w => w.Sheets[1].Name = "Totals");
+        var bytes = Change(original, w => w.Sheets[0].Name = "My garden");
+
+        using var after = new XlsxPackage(bytes);
+        // References are renamed, quoted where the name needs it; text in a string is not a reference.
+        Assert.AreEqual("SUM('My garden'!C2:C3)+LEN(\"Plants!A1\")", after.Cell("Sums", "B2")!.CellFormula!.Text);
+        Assert.AreEqual("'My garden'!$C$2:$C$3", after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single(n => n.Name == "Heights").Text);
+        Assert.AreEqual(
+            "'My garden'!$A$1:$C$3",
+            after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single(n => n.Name == "_xlnm.Print_Area" && n.LocalSheetId! == 0u).Text);
+    }
+
+    [TestMethod]
+    public void SwappingTwoSheetNamesRenamesEachReference()
+    {
+        var book = Plants();
+        book.AddSheet("Tools").Row("A1", "Tool", "Use").Row("A2", "Spade", "dig").Formula("C2", "Plants!A2&Tools!A2", "FernSpade");
+
+        var bytes = Change(book.ToBytes(), w =>
+        {
+            w.Sheets[0].Name = "Tools";
+            w.Sheets[1].Name = "Plants";
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("Tools!A2&Plants!A2", after.Cell("Plants", "C2")!.CellFormula!.Text);
     }
 
     [TestMethod]
@@ -634,8 +635,9 @@ public sealed class XlsxWriterTests
         using var after = new XlsxPackage(bytes);
         AssertSequence(after.SheetNames, "Plants", "Notes");
         Assert.AreEqual(2, after.WorkbookPart.WorksheetParts.Count());
-        var name = after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single();
+        var name = after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single(n => n.Text.StartsWith("Notes", StringComparison.Ordinal));
         Assert.AreEqual("Notes!$A$1:$B$2", name.Text);
+        Assert.IsFalse(after.Workbook.DefinedNames!.Elements<X.DefinedName>().Any(n => n.Text.Contains("Tools", StringComparison.Ordinal)));
         Assert.AreEqual(1u, name.LocalSheetId!.Value);
     }
 
@@ -665,7 +667,7 @@ public sealed class XlsxWriterTests
         using var before = new XlsxPackage(original);
         using var after = new XlsxPackage(bytes);
         AssertSequence(after.SheetNames, "C", "Blank", "B", "Chart", "A");
-        Assert.AreEqual(0u, after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single().LocalSheetId!.Value);
+        Assert.AreEqual(0u, after.Workbook.DefinedNames!.Elements<X.DefinedName>().Single(n => n.Text.StartsWith("C!", StringComparison.Ordinal)).LocalSheetId!.Value);
         AssertSameXml(before.Part("Blank"), after.Part("Blank"));
         AssertSequence(Read(bytes).Sheets.Select(s => s.Name).ToArray(), "C", "B", "A");
     }
@@ -784,7 +786,7 @@ public sealed class XlsxWriterTests
             var original = Plants().ToBytes();
             File.WriteAllBytes(path, original);
             var workbook = Read(original);
-            workbook.Sheets[0].Cards.RemoveAt(0);
+            workbook.Sheets[0].FirstColumn = 2;
 
             Assert.ThrowsExactly<SpreadsheetWriteException>(() => XlsxWriter.Write(workbook, path, Invariant));
 

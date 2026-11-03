@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.IO.Compression;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using SpreadsheetEditor.Core.Formulas;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
@@ -17,9 +19,11 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// table that no sheet refers to any more was removed, and is deleted with its local defined names and the global ones that refer only
 /// to it.</item>
 /// <item>The other places in the sheet list follow the model's order.</item>
+/// <item>A renamed sheet's name is rewritten in every formula, defined name, chart series and pivot cache that refers to it; a table whose
+/// rows are inserted, deleted or moved (<see cref="RowPlan"/>) moves everything below it, and every reference to its rows is shifted.</item>
 /// </list>
-/// A rename or deletion that would leave formulas or defined names referring to a sheet name that no longer exists is refused until
-/// formula references can be rewritten (docs/roadmap.md).
+/// A deletion that would leave formulas or defined names referring to a sheet that no longer exists is refused, and so is a rename or
+/// a change of rows that a part the writer does not rewrite refers to.
 /// </summary>
 internal sealed class WorkbookWriter
 {
@@ -126,7 +130,7 @@ internal sealed class WorkbookWriter
 
             // A duplicated sheet copies its worksheet; so does a second sheet claiming the same worksheet.
             var inPlace = !source.IsCopy && claimed.Add(source.RelationshipId);
-            plans.Add(new SheetPlan(sheet, inPlace ? entry : null, source.RelationshipId));
+            plans.Add(new SheetPlan(sheet, inPlace ? entry : null, source.RelationshipId) { InPlace = inPlace });
         }
 
         // Worksheets no sheet writes into: kept when the app does not show them, deleted when they held a table (the tab was removed).
@@ -219,27 +223,67 @@ internal sealed class WorkbookWriter
             order.Add(plans[next++].Entry!);
         }
 
+        var references = new ReferenceTransform();
         foreach (var plan in plans)
         {
+            if (plan.InPlace && plan.Entry!.Name?.Value is { } oldName)
+            {
+                references.AddRename(oldName, plan.Sheet.Name);
+            }
+
             plan.Entry!.Name = plan.Sheet.Name;
         }
 
         Reorder(root, sheetList, entries, order, oldIndex, copiedNames);
         CheckVisible(order);
 
+        // Where each table's rows go, and the row shifts every reference to them goes through.
+        foreach (var plan in plans)
+        {
+            WorksheetWriter.Validate(plan.Sheet);
+            if (plan.SourceId is { } id && plan.Sheet.Source is { } origin)
+            {
+                var source = SourceOf(id);
+                var slots = CardGrouping.Group(plan.Sheet.FirstDataRow, origin.LastRow, origin.FirstColumn, origin.LastColumn, source.Grid.Merges);
+                plan.Rows = RowPlan.Create(plan.Sheet, origin, slots);
+                references.AddShifts(plan.Sheet.Name, plan.Rows.Shifts);
+            }
+        }
+
+        var moving = plans.Where(p => p.Rows is { ChangesRows: true }).ToList();
+        foreach (var plan in moving)
+        {
+            RowMover.Check((WorksheetPart)workbookPart.GetPartById(plan.Entry!.Id!.Value!), plan.Sheet.Name);
+        }
+
+        CheckRowReferences(original, moving, references);
+
         var sourceStyles = sourceBook.WorkbookStylesPart?.Stylesheet;
         var styles = new StyleWriter(
             workbookPart,
             StyleTable.Read(sourceStyles, sourceBook.ThemePart),
             sourceStyles?.CellFormats?.Elements<X.CellFormat>().Count() ?? 0);
-        var context = new WriteContext(culture, system, new SharedStringWriter(workbookPart), styles);
+        var context = new WriteContext(culture, system, new SharedStringWriter(workbookPart), styles, references);
+        RewriteReferences(document, workbookPart, root, order, plans, references);
+        foreach (var plan in moving)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var part = (WorksheetPart)workbookPart.GetPartById(plan.Entry!.Id!.Value!);
+            RowMover.Move(part, plan.Rows!, plan.Sheet.Source!, plan.Sheet.Name);
+            // Formulas may depend on where their cells are (ROW(), moved references): calculate again, and drop the calculation chain.
+            context.ValueChanged = true;
+            context.FormulaChanged = true;
+        }
+
         foreach (var plan in plans)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var part = (WorksheetPart)workbookPart.GetPartById(plan.Entry!.Id!.Value!);
             var source = plan.SourceId is { } id ? SourceOf(id) : SourceWorksheet.Empty;
-            WorksheetWriter.Write(plan.Sheet, part.Worksheet!, source, context);
+            WorksheetWriter.Write(plan.Sheet, part.Worksheet!, source, context, plan.Rows);
         }
+
+        AddPrintAreas(root, order, plans);
 
         context.Strings.Finish();
         if (deleted.Count > 0)
@@ -269,16 +313,19 @@ internal sealed class WorkbookWriter
     /// <summary>
     /// Refuses a rename or deletion that would leave a reference to a sheet name that no longer exists: in a defined name, a cell formula,
     /// a chart or any other part (a conservative text check, <see cref="SheetReferences"/>). Defined names that are local to a deleted
-    /// worksheet, or that refer only to it, are deleted with it instead.
+    /// worksheet, or that refer only to it, are deleted with it instead. A rename is written into the parts the writer rewrites
+    /// (<see cref="RewriteReferences"/>), so only the other parts are checked for it.
     /// </summary>
     private static void CheckReferences(SpreadsheetDocument original, List<SheetPlan> plans, List<X.Sheet> deleted)
     {
         var gone = new List<(string Name, string? SkipPart)>();
+        var renamed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var plan in plans)
         {
             if (plan.Entry is { } entry && entry.Name?.Value is { } old && !string.Equals(old, plan.Sheet.Name, StringComparison.Ordinal))
             {
                 gone.Add((old, null));
+                renamed.Add(old);
             }
         }
 
@@ -305,6 +352,11 @@ internal sealed class WorkbookWriter
             var refs = SheetReferences.Find(name.Text, skipStrings: true);
             foreach (var (sheetName, _) in gone)
             {
+                if (renamed.Contains(sheetName))
+                {
+                    continue;
+                }
+
                 var deletedName = deleted.Exists(d => string.Equals(d.Name?.Value, sheetName, StringComparison.OrdinalIgnoreCase));
                 var onlyThis = refs.Count > 0 && refs.TrueForAll(r => string.Equals(r, sheetName, StringComparison.OrdinalIgnoreCase));
                 if (deletedName && onlyThis)
@@ -334,7 +386,7 @@ internal sealed class WorkbookWriter
 
             foreach (var (sheetName, skipPart) in gone)
             {
-                if (part.Uri.OriginalString == skipPart)
+                if (part.Uri.OriginalString == skipPart || (renamed.Contains(sheetName) && IsRewritten(part)))
                 {
                     continue;
                 }
@@ -346,6 +398,181 @@ internal sealed class WorkbookWriter
                     throw References(sheetName, part.Uri.OriginalString);
                 }
             }
+        }
+    }
+
+    /// <summary>The parts whose references to sheets the writer rewrites (<see cref="RewriteReferences"/>).</summary>
+    private static bool IsRewritten(OpenXmlPart part) =>
+        part is WorksheetPart or ChartPart or TableDefinitionPart or PivotTableCacheDefinitionPart;
+
+    /// <summary>
+    /// Refuses a save that moves rows on a sheet when a part the writer does not rewrite refers to that sheet (a conservative text check,
+    /// <see cref="SheetReferences"/>), or a pivot cache reads from it: its references would point at the wrong rows.
+    /// </summary>
+    private static void CheckRowReferences(SpreadsheetDocument original, List<SheetPlan> moving, ReferenceTransform references)
+    {
+        if (moving.Count == 0)
+        {
+            return;
+        }
+
+        var names = new List<string>();
+        foreach (var plan in moving)
+        {
+            names.Add(plan.Sheet.Name);
+            names.AddRange(references.Renames.Where(r => SheetNames.Comparer.Equals(r.New, plan.Sheet.Name)).Select(r => r.Old));
+        }
+
+        foreach (var part in AllParts(original))
+        {
+            if (part is WorkbookPart or SharedStringTablePart or WorksheetPart or ChartPart or TableDefinitionPart or DrawingsPart
+                or WorksheetCommentsPart or VmlDrawingPart or CalculationChainPart || !IsXml(part))
+            {
+                continue;
+            }
+
+            string text;
+            using (var reader = new StreamReader(part.GetStream()))
+            {
+                text = Unescape(reader.ReadToEnd());
+            }
+
+            foreach (var name in names)
+            {
+                if (SheetReferences.Mentions(text, name, skipStrings: false)
+                    || text.Contains("sheet=\"" + name + "\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw SpreadsheetWriteException.NotSupported(
+                        $"Rows cannot be inserted or deleted on the sheet \"{name}\" yet: {part.Uri.OriginalString} refers to its cells and cannot be rewritten.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rewrites every reference the save changes (docs/spec.md §9.20, §9.30): renamed sheets' names and moved rows, in every worksheet's
+    /// formulas (cells, conditional formatting, data validation, hyperlink locations, extensions, tables' column formulas), in defined
+    /// names (the print area included), in charts' series formulas and in pivot caches' source sheet names. Formulas in rows that move
+    /// with their card are also translated by that move. Runs before any row moves.
+    /// </summary>
+    private static void RewriteReferences(
+        SpreadsheetDocument document, WorkbookPart workbookPart, X.Workbook root, List<X.Sheet> order, List<SheetPlan> plans, ReferenceTransform references)
+    {
+        var moving = plans.Where(p => p.Rows is { ChangesRows: true }).ToDictionary(p => p.Entry!, p => p.Rows!);
+        if (references.IsEmpty && moving.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var entry in order)
+        {
+            if (entry.Id?.Value is not { } id || workbookPart.GetPartById(id) is not WorksheetPart part || part.Worksheet is not { } worksheet)
+            {
+                continue;
+            }
+
+            var name = entry.Name?.Value ?? "";
+            var rows = moving.GetValueOrDefault(entry);
+            if (references.IsEmpty && rows is null)
+            {
+                continue;
+            }
+
+            FormulaRewriter.RewriteCells(
+                worksheet,
+                name,
+                (text, row, _) =>
+                {
+                    var rewritten = references.Apply(text, name);
+                    return rows is not null && rows.Map(row) is { } moved && rows.Positional(row) is { } position && moved != position
+                        ? FormulaReferences.Translate(rewritten, moved - position, 0)
+                        : rewritten;
+                },
+                rows is null ? null : rows.Map);
+            FormulaRewriter.RewriteOther(worksheet, text => references.Apply(text, name));
+            foreach (var table in part.TableDefinitionParts.Select(t => t.Table).OfType<X.Table>())
+            {
+                foreach (var formula in table.Descendants<X.CalculatedColumnFormula>().Cast<OpenXmlLeafTextElement>()
+                    .Concat(table.Descendants<X.TotalsRowFormula>()))
+                {
+                    if (!string.IsNullOrEmpty(formula.Text))
+                    {
+                        formula.Text = references.Apply(formula.Text, name);
+                    }
+                }
+            }
+        }
+
+        foreach (var definedName in root.DefinedNames?.Elements<X.DefinedName>() ?? [])
+        {
+            string? local = definedName.LocalSheetId?.Value is { } index && index < order.Count ? order[(int)index].Name?.Value : null;
+            var text = definedName.Text;
+            var rewritten = references.Apply(text, local);
+            if (!string.Equals(text, rewritten, StringComparison.Ordinal))
+            {
+                definedName.Text = rewritten;
+            }
+        }
+
+        foreach (var part in AllParts(document))
+        {
+            if (part is ChartPart chart && chart.ChartSpace is { } space)
+            {
+                foreach (var formula in space.Descendants<DocumentFormat.OpenXml.Drawing.Charts.Formula>())
+                {
+                    var rewritten = references.Apply(formula.Text, null);
+                    if (!string.Equals(formula.Text, rewritten, StringComparison.Ordinal))
+                    {
+                        formula.Text = rewritten;
+                    }
+                }
+            }
+            else if (part is PivotTableCacheDefinitionPart cache
+                && cache.PivotCacheDefinition?.CacheSource?.WorksheetSource is { Sheet.Value: { } sheet } source)
+            {
+                var renamed = references.RenameSheetName(sheet);
+                if (!string.Equals(renamed, sheet, StringComparison.Ordinal))
+                {
+                    source.Sheet = renamed;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gives each written sheet that has no print area one over its table (docs/spec.md §5.7 with §9.27): its columns, from its name row
+    /// (or header, or first card) to the last row it takes after the save. A print area the sheet has is kept, moved with its rows
+    /// (manager, 2026-11-03).
+    /// </summary>
+    private static void AddPrintAreas(X.Workbook root, List<X.Sheet> order, List<SheetPlan> plans)
+    {
+        foreach (var plan in plans)
+        {
+            var index = order.IndexOf(plan.Entry!);
+            if (root.DefinedNames?.Elements<X.DefinedName>().Any(n => n.Name?.Value == "_xlnm.Print_Area" && n.LocalSheetId?.Value == index) == true)
+            {
+                continue;
+            }
+
+            var sheet = plan.Sheet;
+            int first, last;
+            if (plan.Rows is { } rows)
+            {
+                (first, last) = (rows.FirstRow, rows.LastRow);
+            }
+            else
+            {
+                first = 1;
+                last = (string.IsNullOrEmpty(sheet.TableName) ? 0 : 1) + (sheet.HeaderRow is null ? 0 : 1) + sheet.Cards.Count;
+            }
+
+            last = Math.Max(first, last);
+            var name = FormulaReferences.NeedsQuotes(sheet.Name) ? "'" + sheet.Name.Replace("'", "''", StringComparison.Ordinal) + "'" : sheet.Name;
+            var text = string.Create(
+                CultureInfo.InvariantCulture,
+                $"{name}!${CellReference.ColumnName(sheet.FirstColumn)}${first}:${CellReference.ColumnName(sheet.FirstColumn + sheet.Columns.Count - 1)}${last}");
+            var names = root.DefinedNames ?? InsertDefinedNames(root);
+            names.AppendChild(new X.DefinedName(text) { Name = "_xlnm.Print_Area", LocalSheetId = (uint)index });
         }
     }
 
@@ -535,5 +762,11 @@ internal sealed class WorkbookWriter
 
         /// <summary>The relationship id of the worksheet in the source the sheet was read from, or null for a new sheet.</summary>
         public string? SourceId { get; } = sourceId;
+
+        /// <summary>True when the sheet is written into the worksheet it was read from (not a copy, not a new sheet).</summary>
+        public bool InPlace { get; init; }
+
+        /// <summary>Where the table's rows go; null for a new sheet.</summary>
+        public RowPlan? Rows { get; set; }
     }
 }
