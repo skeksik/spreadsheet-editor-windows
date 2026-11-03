@@ -116,7 +116,10 @@ public static class XlsxReader
         throw new SpreadsheetReadException(SpreadsheetReadError.NotAnXlsx, "The file is not an Excel workbook (.xlsx).");
     }
 
-    /// <summary>Reads the sheets that hold a table; adds the names of the others to <paramref name="skipped"/>.</summary>
+    /// <summary>
+    /// Reads every grid worksheet, hidden and empty ones included (docs/spec.md §9.10, §9.12); adds the names of the other sheets (chart,
+    /// dialog and macro sheets) to <paramref name="skipped"/>.
+    /// </summary>
     private static List<Sheet> ReadSheets(
         SpreadsheetDocument document, CultureInfo culture, List<string> skipped, CancellationToken cancellationToken)
     {
@@ -144,14 +147,8 @@ public static class XlsxReader
             }
             var grid = cells.Read(part, cancellationToken);
             var pictures = DrawingPictures.Read(part, cancellationToken);
-            var sheet = SheetBuilder.Build(entry.Name?.Value ?? "", id, entry.SheetId?.Value ?? 0, grid, styles, pictures);
-            if (sheet is null)
-            {
-                // No occupied cell: no tab, and the worksheet stays untouched in the package (§9.10).
-                Skip(entry, skipped);
-                continue;
-            }
-            sheets.Add(sheet);
+            // A worksheet without an occupied cell opens as a new sheet's defaults (§9.10).
+            sheets.Add(SheetBuilder.Build(entry.Name?.Value ?? "", id, entry.SheetId?.Value ?? 0, grid, styles, pictures));
         }
         return sheets;
     }

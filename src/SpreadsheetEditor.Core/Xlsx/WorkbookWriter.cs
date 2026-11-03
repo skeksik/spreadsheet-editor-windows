@@ -15,9 +15,10 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// <list type="bullet">
 /// <item>Each sheet read from a worksheet is written into it in place; a renamed sheet renames it; a duplicated sheet
 /// (<see cref="SheetSource.IsCopy"/>) gets a copy of the whole worksheet; a new sheet gets a new worksheet.</item>
-/// <item>Worksheets the app does not show (no table, chart sheets, dialog sheets) stay as they are, in their place; a worksheet with a
-/// table that no sheet refers to any more was removed, and is deleted with its local defined names and the global ones that refer only
-/// to it.</item>
+/// <item>Sheets the app does not show (chart sheets, dialog sheets, macro sheets) stay as they are, in their place; a worksheet that no
+/// sheet refers to any more was removed, and is deleted with its local defined names and the global ones that refer only to it.</item>
+/// <item>A sheet read from a worksheet without a table that is still the defaults it opened as leaves its worksheet as it was read; once
+/// edited, it is written into that worksheet as a new sheet is, from its first row (§9.10).</item>
 /// <item>The other places in the sheet list follow the model's order.</item>
 /// <item>A renamed sheet's name is rewritten in every formula, defined name, chart series and pivot cache that refers to it; a table whose
 /// rows are inserted, deleted or moved (<see cref="RowPlan"/>) moves everything below it, and every reference to its rows is shifted.</item>
@@ -133,7 +134,7 @@ internal sealed class WorkbookWriter
             plans.Add(new SheetPlan(sheet, inPlace ? entry : null, source.RelationshipId) { InPlace = inPlace });
         }
 
-        // Worksheets no sheet writes into: kept when the app does not show them, deleted when they held a table (the tab was removed).
+        // Sheets no model sheet writes into: kept when the app does not show them, deleted when they are worksheets (the tab was removed).
         var kept = new List<X.Sheet>();
         var deleted = new List<X.Sheet>();
         foreach (var entry in entries)
@@ -144,7 +145,7 @@ internal sealed class WorkbookWriter
             }
 
             var part = entry.Id?.Value is { } relationship ? sourceBook.GetPartById(relationship) : null;
-            if (part is WorksheetPart worksheet && HasTable(worksheet, reader))
+            if (part is WorksheetPart)
             {
                 deleted.Add(entry);
             }
@@ -241,7 +242,7 @@ internal sealed class WorkbookWriter
         foreach (var plan in plans)
         {
             WorksheetWriter.Validate(plan.Sheet);
-            if (plan.SourceId is { } id && plan.Sheet.Source is { } origin)
+            if (plan.SourceId is { } id && plan.Sheet.Source is { IsEmpty: false } origin)
             {
                 var source = SourceOf(id);
                 var slots = CardGrouping.Group(plan.Sheet.FirstDataRow, origin.LastRow, origin.FirstColumn, origin.LastColumn, source.Grid.Merges);
@@ -280,6 +281,12 @@ internal sealed class WorkbookWriter
         foreach (var plan in plans)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (plan.Sheet.Source?.IsUntouchedEmpty(plan.Sheet) == true)
+            {
+                // An empty worksheet the user did not edit is written back as it was read: no header, metadata or print area (§9.10).
+                continue;
+            }
+
             var part = (WorksheetPart)workbookPart.GetPartById(plan.Entry!.Id!.Value!);
             var source = plan.SourceId is { } id ? SourceOf(id) : SourceWorksheet.Empty;
             WorksheetWriter.Write(plan.Sheet, part, source, context, plan.Rows, plan.Pictures ?? SheetPictures.ForNewSheet(plan.Sheet));
@@ -296,8 +303,6 @@ internal sealed class WorkbookWriter
         Recalculate(workbookPart, root, context);
     }
 
-    private static bool HasTable(WorksheetPart part, WorksheetCells reader) =>
-        TableDetector.Detect(reader.Read(part, CancellationToken.None), []) is not null;
 
     /// <summary>Sheet names are unique without regard to case, among the model's sheets and the worksheets kept as they are.</summary>
     private static void CheckNames(List<SheetPlan> plans, List<X.Sheet> kept)
@@ -545,6 +550,11 @@ internal sealed class WorkbookWriter
     {
         foreach (var plan in plans)
         {
+            if (plan.Sheet.Source?.IsUntouchedEmpty(plan.Sheet) == true)
+            {
+                continue;
+            }
+
             var index = order.IndexOf(plan.Entry!);
             if (root.DefinedNames?.Elements<X.DefinedName>().Any(n => n.Name?.Value == "_xlnm.Print_Area" && n.LocalSheetId?.Value == index) == true)
             {

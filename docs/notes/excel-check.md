@@ -220,18 +220,64 @@ Sheet **Ends**:
 Filled in by the local check: the date, the Excel version (File, Account, About Excel), and per file whether it opened without a repair
 prompt, whether everything listed matches, and what did not.
 
-Excel version: … · Date: … · Windows display language and region format: …
+Excel version: **Excel for the web**, build 16.0.20626.42304 (File, Info; it has no About Excel), in Microsoft Edge 156, editor
+language en-US · Date: 2026-11-03 · Windows display language and region format: English (United States), English (United States)
+
+**Desktop Excel was not checked.** It is not installed on the owner's PC, so the owner chose Excel for the web: the files were
+uploaded to a private OneDrive folder and opened there. Excel for the web saves automatically, so "close without saving" was not
+possible; only the OneDrive copies changed (helper formulas typed into spare cells, see below). It never offered a repair. A file
+it could not open showed a dialog instead (below). What desktop Excel does with these files, its repair prompt included, is still
+not verified.
+
+Formulas and types were read in the formula bar or with helper formulas typed into spare cells (`=FORMULATEXT(B2)`, the `ISNUMBER`
+checks of 01, `=TEXT(B2,"yyyy-mm-dd hh:mm:ss")`). Pictures were looked at on screen by the owner and by Claude.
 
 | File | Opens without repair | Matches the list | Notes (what differed) |
 |---|---|---|---|
-| 00-control.xlsx | | | |
-| 01-values.xlsx | | | |
-| 02-styles.xlsx | | | |
-| 03-cards.xlsx | | | |
-| 04-table-name.xlsx | | | |
-| 05-shared-formulas.xlsx | | | |
-| 06-sheets.xlsx | | | |
-| 07-pictures.xlsx | | | |
-| 08-new-workbook.xlsx | | | |
-| 09-jpeg-orientation.xlsx | | | B3: looks like B2 / turned |
-| 10-table-ends.xlsx | | | |
+| 00-control.xlsx | **No**: error dialog, see below | Not checked (did not open) | Fails because of the test builders' picture, not the writer: see below. A copy that changes only that picture's `spPr` opens, and matches the list |
+| 01-values.xlsx | Yes | Yes | Every row's type as listed. B10 shows 43, so Excel recalculated. B11's number format is Text. Dates show `########` in the narrow column B; their values are 2024-03-15 00:00, 2024-03-15 14:30, 14:30 and 2023-03-15 |
+| 02-styles.xlsx | Yes | Yes | B5 is shown in the default black, not red. Excel for the web's formatting pane does not show a cell's font colour, so "Automatic" could not be read there. B8 is wrapped, top-aligned, three lines in the formula bar; row 8 is not grown, so only `line one` shows (allowed by the list) |
+| 03-cards.xlsx | Yes | Yes | Name Manager shows CardTotal as `Cards B21:B21`; the file holds `Cards!$B$21`. It also lists print areas Report `A1:B4` and Check `A1:A3`, which the writer adds by design (spec §5.7, §9.27). The Check sheet was not looked at |
+| 04-table-name.xlsx | Yes | Yes | |
+| 05-shared-formulas.xlsx | Yes | Yes | |
+| 06-sheets.xlsx | Yes | Yes | Column G is about 210 px. Both Garden plants sheets: Landscape, margins top and bottom 0.75", left and right 0.5". Their print areas are `A1:B3`, so column G is not printed (by design, §9.27) |
+| 07-pictures.xlsx | **No**: error dialog, see below | Not checked (did not open) | Fails because of picture 0 at H2, which is kept from the test builders' source. A copy that changes only that picture's `spPr` opens. In that copy: layout, sizes, merges, B10 and B22 (`=COUNTA(A2:A10)`, 8) as listed, all rings round, **but a thin red line shows at every cropped edge**: see below |
+| 08-new-workbook.xlsx | Yes | Yes | Picture round, no red. Check has A1 and A2 only, as this file's list says |
+| 09-jpeg-orientation.xlsx | Yes | Yes | **B3 looks like B2**: Excel for the web ignores EXIF orientation. B3's JPEG does carry orientation 6. See `jpeg-orientation.md` |
+| 10-table-ends.xlsx | Yes | Yes | |
+
+### 00 and 07: "Sorry, something went wrong"
+
+Opening either file (00 twice, 07 once), Excel for the web shows the sheet tabs with empty cells and a dialog:
+
+> Excel
+> Sorry, something went wrong.
+> Could you please try that again?
+> Error Id: `<id>`, `<time>`
+> Give Feedback to Microsoft · OK
+
+There is no repair offer and no repair log. 01–06 and 08–10 open normally in the same session.
+
+The two files share one thing the others lack: the picture made by the test builders (`TestSheet.cs`, `new Xdr.ShapeProperties()`),
+whose drawing has an empty `<xdr:spPr />`. 07 keeps that picture as it was (H2, the source picture outside the table). The
+writer's own pictures have `<xdr:spPr><a:prstGeom prst="rect">…</a:prstGeom><a:ln><a:noFill /></a:ln></xdr:spPr>`. Copies of 00
+and 07 that differ only in that element, filled with `<a:prstGeom prst="rect"><a:avLst /></a:prstGeom>`, open without the dialog.
+So the cause is the test builders' picture, not the writer. An empty `spPr` is schema-valid (CI's validator accepts it), but
+Excel for the web does not open it. Not verified: whether desktop Excel opens it, and whether real files ever have an empty
+`spPr`. Because the writer keeps a picture it did not edit as it was, a source file like that would still fail after a save.
+
+In the 00 copy, picture 0 at G2 looked wider than tall, about 95 × 63 px, not 96 × 96 as its anchor gives. Its look is not part of
+the check.
+
+### 07: red at the cropped edges
+
+In the copy of 07 that opens, every picture the writer crops shows a thin red line, about 1 px, along its cropped edges:
+- B3, picture 2: top and bottom.
+- B5, picture 4: left and right.
+- B6, picture 5: top and bottom.
+
+The pictures that are not cropped show none. The owner saw the same. The writer crops with `a:srcRect`, so the red bands stay in
+the PNG: `t="16666" b="16666"` for B3 (40 × 90 px), `l="16666" r="16666"` for B5 (120 × 60), and `t="12500" b="12500"` for B6
+(64 × 64). B6's crop is exact (8 px of 64 at each end), so rounding is not the cause. The likely cause is Excel for the web's
+scaling, which blends pixels just outside the crop into the edge. That is a guess, not verified, and desktop Excel was not
+checked. By this list's rule ("red at an edge means a wrong crop") this is a mismatch.

@@ -47,12 +47,14 @@ references are to `docs/spec.md`.
 - [x] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35): separator and encoding detected and kept,
       one empty card for a header-only file, export of one given sheet, round-trip tests.
 - [x] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
-- [ ] `spike/jpeg-orientation` (local): does Excel apply a JPEG's EXIF orientation to a picture in an `.xlsx`? Check an
-      orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
+- [x] `spike/jpeg-orientation` (local, #31): does Excel apply a JPEG's EXIF orientation to a picture in an `.xlsx`? No: Excel for the
+      web shows the stored pixels (`docs/notes/jpeg-orientation.md`), so `feat/picture-facts` is unchanged. Desktop Excel not verified;
+      if it turns the picture, `feat/picture-facts` swaps width and height for orientations 5–8.
 - [ ] `test/xlsx-in-excel` (local): open workbooks saved by the writer (values, rows inserted, deleted and moved, pictures, renamed
       and duplicated sheets, shared formulas) in Excel on the owner's PC: no repair prompt, and the content as expected. CI cannot
       check this (PRs #19, #21, #22 mark it not verified). A cloud worker writes the sample files and the check list; a local card
-      opens them.
+      opens them. Samples #25, #27; run in Excel for the web on 2026-11-03 (#31): all match except two test-builder findings, fixed in
+      `test/excel-check-pictures`. Still open: a re-run in desktop Excel (repair prompt, rendering), when one is available.
 
 ## M2: Editing in the core (cloud)
 - [x] `feat/editing-ops`, in two PRs. Part 1 (`feat/editing-ops`, #12): the undo and redo stack, card and entry
