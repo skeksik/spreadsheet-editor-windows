@@ -39,7 +39,7 @@ public static class EntryValue
         {
             CellValueKind.Date => parsed with
             {
-                Format = NumberFormats.IsDateOrTime(original?.Format) ? original!.Format : DefaultFormat(parsed.Date!.Value),
+                Format = NumberFormats.IsDateOrTime(original?.Format) ? original!.Format : DefaultFormat(parsed.Date.GetValueOrDefault()),
             },
             CellValueKind.Number or CellValueKind.Boolean when originalIsDate => parsed with { Format = NumberFormat.General },
             _ => parsed,
