@@ -77,3 +77,8 @@ references are to `docs/spec.md`.
 - [ ] `build/installer`: an installer or MSIX (ADR), the licence texts in `licences\`, a release workflow that attaches the build to a
       GitHub release. Needs the owner's choice of installer technology.
 - [ ] Milestone accessibility pass with the owner: Narrator, high contrast, keyboard only (local).
+
+## Later (after M4)
+- [ ] `feat/app-grid-preview`: a grid view of the sheet as the saved workbook will look (rows, columns, merged cells and the pictures
+      laid out in them), as a preview of the result next to the card form. Asked for by the owner on 2026-11-03, to come after
+      everything else; it needs its own plan, and a decision record if it changes how the app is laid out.
