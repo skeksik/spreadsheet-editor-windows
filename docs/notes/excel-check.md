@@ -21,7 +21,10 @@ explorer "$env:TEMP\excel-check"
 ```
 
 The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `10-table-ends.xlsx`, a
-few KB each. Running the command again overwrites them. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder
+few KB each. Running the command again overwrites them.
+
+If desktop Excel is not installed, the check can be run in Excel for the web: upload the files to a OneDrive folder and open them
+there. Excel for the web saves automatically, so upload copies and keep the originals. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder
 and delete them.
 
 The code is in `tests/SpreadsheetEditor.Core.Tests/ExcelCheck/`: `ExcelCheckSamples.cs` builds the samples and `CheckPictures.cs` draws
@@ -152,7 +155,8 @@ need quotes), then duplicated; Old removed; Summary moved to the front.
 
 Every picture written by the app shows **a white box with a round black ring and a black number**. The ring touches the box's two longer
 sides. **No red may show anywhere**: the red bands in the picture files lie outside the part the app keeps, so red at an edge means a
-wrong crop. **An oval ring** means a stretched picture. The pictures are small files (40–120 px) shown larger, so they look blocky. That
+wrong crop. Between the kept part and the red, each file has a light grey band 2 source pixels wide: **a thin grey line at a cropped
+edge is fine; red means a wrong crop** (off by more than about 2 px). **An oval ring** means a stretched picture. The pictures are small files (40–120 px) shown larger, so they look blocky. That
 is expected.
 
 Sheet **Pictures**. The pictures are 100 × 150 px for a tall picture and 200 × 150 px for a wide one. Up to 4 units fit per row,
@@ -234,14 +238,14 @@ checks of 01, `=TEXT(B2,"yyyy-mm-dd hh:mm:ss")`). Pictures were looked at on scr
 
 | File | Opens without repair | Matches the list | Notes (what differed) |
 |---|---|---|---|
-| 00-control.xlsx | **No**: error dialog, see below | Not checked (did not open) | Fails because of the test builders' picture, not the writer: see below. A copy that changes only that picture's `spPr` opens, and matches the list |
+| 00-control.xlsx | **No**: error dialog, see below | Not checked (did not open) | Rerun needed after `test/excel-check-pictures`. Fails because of the test builders' picture, not the writer: see below. A copy that changes only that picture's `spPr` opens, and matches the list |
 | 01-values.xlsx | Yes | Yes | Every row's type as listed. B10 shows 43, so Excel recalculated. B11's number format is Text. Dates show `########` in the narrow column B; their values are 2024-03-15 00:00, 2024-03-15 14:30, 14:30 and 2023-03-15 |
 | 02-styles.xlsx | Yes | Yes | B5 is shown in the default black, not red. Excel for the web's formatting pane does not show a cell's font colour, so "Automatic" could not be read there. B8 is wrapped, top-aligned, three lines in the formula bar; row 8 is not grown, so only `line one` shows (allowed by the list) |
 | 03-cards.xlsx | Yes | Yes | Name Manager shows CardTotal as `Cards B21:B21`; the file holds `Cards!$B$21`. It also lists print areas Report `A1:B4` and Check `A1:A3`, which the writer adds by design (spec §5.7, §9.27). The Check sheet was not looked at |
 | 04-table-name.xlsx | Yes | Yes | |
 | 05-shared-formulas.xlsx | Yes | Yes | |
 | 06-sheets.xlsx | Yes | Yes | Column G is about 210 px. Both Garden plants sheets: Landscape, margins top and bottom 0.75", left and right 0.5". Their print areas are `A1:B3`, so column G is not printed (by design, §9.27) |
-| 07-pictures.xlsx | **No**: error dialog, see below | Not checked (did not open) | Fails because of picture 0 at H2, which is kept from the test builders' source. A copy that changes only that picture's `spPr` opens. In that copy: layout, sizes, merges, B10 and B22 (`=COUNTA(A2:A10)`, 8) as listed, all rings round, **but a thin red line shows at every cropped edge**: see below |
+| 07-pictures.xlsx | **No**: error dialog, see below | Not checked (did not open) | Rerun needed after `test/excel-check-pictures`. Fails because of picture 0 at H2, which is kept from the test builders' source. A copy that changes only that picture's `spPr` opens. In that copy: layout, sizes, merges, B10 and B22 (`=COUNTA(A2:A10)`, 8) as listed, all rings round, **but a thin red line shows at every cropped edge**: see below |
 | 08-new-workbook.xlsx | Yes | Yes | Picture round, no red. Check has A1 and A2 only, as this file's list says |
 | 09-jpeg-orientation.xlsx | Yes | Yes | **B3 looks like B2**: Excel for the web ignores EXIF orientation. B3's JPEG does carry orientation 6. See `jpeg-orientation.md` |
 | 10-table-ends.xlsx | Yes | Yes | |
@@ -266,6 +270,13 @@ So the cause is the test builders' picture, not the writer. An empty `spPr` is s
 Excel for the web does not open it. Not verified: whether desktop Excel opens it, and whether real files ever have an empty
 `spPr`. Because the writer keeps a picture it did not edit as it was, a source file like that would still fail after a save.
 
+**Fixed in `test/excel-check-pictures`:** the test builders' pictures now carry `<a:prstGeom prst="rect"><a:avLst /></a:prstGeom>`
+in their `spPr`, as the writer's own do (the writer's have no `a:xfrm`, so neither do the builders'). The writer is unchanged: it keeps
+a picture it did not edit as it was, by design.
+
+**Not verified:** a real file whose picture has an empty `spPr` would still fail in Excel for the web after the app saves it, since
+the writer keeps that picture as it was. It failed before the app touched it, too, so the save does not make it worse.
+
 In the 00 copy, picture 0 at G2 looked wider than tall, about 95 × 63 px, not 96 × 96 as its anchor gives. Its look is not part of
 the check.
 
@@ -281,3 +292,13 @@ the PNG: `t="16666" b="16666"` for B3 (40 × 90 px), `l="16666" r="16666"` for B
 (64 × 64). B6's crop is exact (8 px of 64 at each end), so rounding is not the cause. The likely cause is Excel for the web's
 scaling, which blends pixels just outside the crop into the edge. That is a guess, not verified, and desktop Excel was not
 checked. By this list's rule ("red at an edge means a wrong crop") this is a mismatch.
+
+**Decision (manager): the writer keeps its `a:srcRect` crop.** `srcRect` is the format's own way to crop a picture. ECMA-376 Part 1
+(ISO/IEC 29500-1), element `a:srcRect`, "Source Rectangle": "This element specifies the portion of the blip used for the fill. Each
+edge of the source rectangle is defined by a percentage offset from the corresponding edge of the bounding box. A positive percentage
+specifies an inset, while a negative percentage specifies an outset." (quoted from the ISO/IEC 29500-1 1st Edition text in the
+remarks of the Open XML SDK's `SourceRectangle` class, https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.drawing.sourcerectangle,
+read 2026-11-03). The section number (§20.1.8.55 in that edition) is not verified: the page does not give it and the standard was not
+read. Instead, `test/excel-check-pictures` changed the check pictures: a light grey band 2 source pixels wide now lies between the kept
+region and the red, so a correct crop shows at most a thin grey line, while a crop off by more than about 2 px still shows red. Rerun
+needed.
