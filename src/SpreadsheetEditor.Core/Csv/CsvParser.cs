@@ -21,7 +21,15 @@ internal sealed class CsvParser
 
     private char separator = ',';
 
+    // The last character Next returned, or -1 before the first.
+    private int lastRead = -1;
+
     public CsvParser(TextReader reader) => this.reader = reader;
+
+    /// <summary>
+    /// True when the last character read is a line break: once <see cref="ReadRecord"/> has returned null, whether the text ends with one.
+    /// </summary>
+    public bool EndsWithLineBreak => lastRead is '\r' or '\n';
 
     /// <summary>The 1-based line the parser is on.</summary>
     public int LineNumber { get; private set; } = 1;
@@ -245,6 +253,7 @@ internal sealed class CsvParser
             {
                 position++;
             }
+            lastRead = c;
         }
         return c;
     }

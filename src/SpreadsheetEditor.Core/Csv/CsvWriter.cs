@@ -12,7 +12,8 @@ namespace SpreadsheetEditor.Core.Csv;
 /// card is empty writes no card line, so a header-only file is saved as it was read.</item>
 /// <item>A value is quoted only when it holds the separator, a quote or a line break, and a line holding one empty value is written as
 /// <c>""</c>, so that it is not read back as a blank line.</item>
-/// <item>CRLF after every line, the last one included; the format's encoding, with its byte order mark if it has one.</item>
+/// <item>CRLF between lines, and after the last one when <see cref="CsvFormat.FinalLineBreak"/> is set (as the read file had it, or
+/// always for a new file); the format's encoding, with its byte order mark if it has one.</item>
 /// </list>
 /// </summary>
 public static class CsvWriter
@@ -101,25 +102,29 @@ public static class CsvWriter
         }
         char[] needsQuotes = [separator, '"', '\r', '\n'];
         var values = new string[columnCount];
+        var lines = 0;
         if (sheet.HeaderRow is not null)
         {
             for (var i = 0; i < columnCount; i++)
             {
                 values[i] = sheet.Columns[i].Name;
             }
-            WriteLine(writer, values, separator, needsQuotes);
+            WriteLine(writer, values, separator, needsQuotes, lines++);
         }
-        if (sheet.Cards.Count == 1 && IsEmpty(sheet.Cards[0]))
+        if (sheet.Cards.Count != 1 || !IsEmpty(sheet.Cards[0]))
         {
-            return;
-        }
-        foreach (var card in sheet.Cards)
-        {
-            for (var i = 0; i < columnCount; i++)
+            foreach (var card in sheet.Cards)
             {
-                values[i] = i < card.Entries.Count ? card.Entries[i].Text : "";
+                for (var i = 0; i < columnCount; i++)
+                {
+                    values[i] = i < card.Entries.Count ? card.Entries[i].Text : "";
+                }
+                WriteLine(writer, values, separator, needsQuotes, lines++);
             }
-            WriteLine(writer, values, separator, needsQuotes);
+        }
+        if (lines > 0 && format.FinalLineBreak)
+        {
+            writer.Write("\r\n");
         }
     }
 
@@ -169,8 +174,13 @@ public static class CsvWriter
         return true;
     }
 
-    private static void WriteLine(StreamWriter writer, string[] values, char separator, char[] needsQuotes)
+    // Writes one line, after the line break that ends the line before it; the last line's break is the caller's (FinalLineBreak).
+    private static void WriteLine(StreamWriter writer, string[] values, char separator, char[] needsQuotes, int index)
     {
+        if (index > 0)
+        {
+            writer.Write("\r\n");
+        }
         if (values.Length == 1 && values[0].Length == 0)
         {
             writer.Write("\"\"");
@@ -196,6 +206,5 @@ public static class CsvWriter
                 }
             }
         }
-        writer.Write("\r\n");
     }
 }

@@ -158,6 +158,18 @@ public sealed class CsvWriterTests
     }
 
     [TestMethod]
+    public void EndsTheLastLineAsTheFormatSays()
+    {
+        var withBreak = new CsvFormat(CsvSeparator.Comma, CsvEncoding.Utf8);
+        var withoutBreak = withBreak with { FinalLineBreak = false };
+
+        Assert.IsTrue(CsvFormat.Default.FinalLineBreak);
+        Assert.AreEqual("a,b\r\n1,2\r\n", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶1|2"), withBreak)));
+        Assert.AreEqual("a,b\r\n1,2", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶1|2"), withoutBreak)));
+        Assert.AreEqual("a,b", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶|"), withoutBreak)));
+    }
+
+    [TestMethod]
     public void WritingAFileLeavesNoTemporaryFile()
     {
         var folder = Directory.CreateTempSubdirectory("csv-tests-");
