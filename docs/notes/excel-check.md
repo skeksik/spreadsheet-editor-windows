@@ -1,8 +1,8 @@
 # Excel check
 
 Files saved by the xlsx writer (PRs #19, #21, #22) have not been opened in Excel yet, and CI cannot do it. This check opens nine sample
-workbooks, and one control file, in Excel on the owner's PC. Each file is made the way the app makes one: a source workbook is built in code, read with
-`XlsxReader`, edited with `WorkbookEditor` and saved with `XlsxWriter`. Roadmap items: `test/xlsx-in-excel` and
+workbooks and one control file in Excel on the owner's PC. Each sample is made the way the app makes one: a source workbook is built
+in code, read with `XlsxReader`, edited with `WorkbookEditor` and saved with `XlsxWriter`. Roadmap items: `test/xlsx-in-excel` and
 `spike/jpeg-orientation` (M1).
 
 CI writes the same files on every run. It also checks each one against the Open XML schemas (the Open XML SDK's validator, format
@@ -20,8 +20,9 @@ Remove-Item Env:EXCEL_CHECK_DIR
 explorer "$env:TEMP\excel-check"
 ```
 
-The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `09-jpeg-orientation.xlsx`, a few KB each. Running
-the command again overwrites them. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder and delete them.
+The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `09-jpeg-orientation.xlsx`, a
+few KB each. Running the command again overwrites them. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder
+and delete them.
 
 The code is in `tests/SpreadsheetEditor.Core.Tests/ExcelCheck/`: `ExcelCheckSamples.cs` builds the samples and `CheckPictures.cs` draws
 the pictures.
