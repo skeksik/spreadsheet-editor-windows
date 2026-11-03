@@ -1,5 +1,6 @@
 using System.Globalization;
 using DocumentFormat.OpenXml;
+using SpreadsheetEditor.Core.Formulas;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
@@ -9,8 +10,8 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// <summary>
 /// Writes one sheet's table into its worksheet's DOM (docs/spec.md §5.2, §5.5–5.6 with §9.2–9.3, §9.7, §9.16–9.19). The model is compared
 /// with the worksheet as it was read (<see cref="SourceWorksheet"/>): a cell is changed only when its value, style or position changed,
-/// so everything else stays as read. Cards are written over the rows they were read from; a change that needs rows inserted or deleted is
-/// refused with <see cref="SpreadsheetWriteError.NotSupported"/> (part B of the writer).
+/// so everything else stays as read. The worksheet's rows were already moved by the sheet's <see cref="RowPlan"/> (<see cref="RowMover"/>):
+/// each card is written into its rows after the move, and a lookup in the worksheet as read goes through the plan to the row as read.
 /// </summary>
 internal sealed class WorksheetWriter
 {
@@ -19,13 +20,15 @@ internal sealed class WorksheetWriter
     private readonly CellIndex cells;
     private readonly SourceWorksheet source;
     private readonly WriteContext context;
+    private readonly RowPlan? plan;
 
     /// <summary>The table's columns as read; cells to their right that are not part of the old table are not overwritten.</summary>
     private readonly int sourceLastColumn;
 
-    private WorksheetWriter(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context)
+    private WorksheetWriter(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context, RowPlan? plan)
     {
         this.sheet = sheet;
+        this.plan = plan;
         this.worksheet = worksheet;
         this.source = source;
         this.context = context;
@@ -33,8 +36,28 @@ internal sealed class WorksheetWriter
         sourceLastColumn = sheet.Source?.LastColumn ?? int.MaxValue;
     }
 
-    /// <summary>Writes a sheet read from <c>.xlsx</c> over its table as read, or a new sheet into an empty worksheet.</summary>
-    public static void Write(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context)
+    /// <summary>
+    /// Writes a sheet read from <c>.xlsx</c> into its table's rows as <paramref name="plan"/> moved them, or a new sheet (no plan) into an
+    /// empty worksheet.
+    /// </summary>
+    public static void Write(Sheet sheet, X.Worksheet worksheet, SourceWorksheet source, WriteContext context, RowPlan? plan)
+    {
+        Validate(sheet);
+        var writer = new WorksheetWriter(sheet, worksheet, source, context, plan);
+        if (sheet.Source is { } origin && plan is not null)
+        {
+            writer.WriteOverSource(origin, plan);
+        }
+        else
+        {
+            writer.WriteNew();
+        }
+
+        writer.WriteMetadata();
+    }
+
+    /// <summary>Refuses a sheet without entries, or a card without one value per entry.</summary>
+    public static void Validate(Sheet sheet)
     {
         if (sheet.Columns.Count == 0)
         {
@@ -48,92 +71,54 @@ internal sealed class WorksheetWriter
                 throw SpreadsheetWriteException.Invalid($"A card on the sheet \"{sheet.Name}\" does not have one value per entry.");
             }
         }
-
-        var writer = new WorksheetWriter(sheet, worksheet, source, context);
-        if (sheet.Source is { } origin)
-        {
-            writer.WriteOverSource(origin);
-        }
-        else
-        {
-            writer.WriteNew();
-        }
-
-        writer.WriteMetadata();
     }
 
-    private void WriteOverSource(SheetSource origin)
+    private void WriteOverSource(SheetSource origin, RowPlan rows)
     {
         if (sheet.FirstColumn != origin.FirstColumn)
         {
             throw SpreadsheetWriteException.NotSupported($"The table on the sheet \"{sheet.Name}\" was moved to another column.");
         }
 
-        var slots = CardGrouping.Group(sheet.FirstDataRow, origin.LastRow, origin.FirstColumn, origin.LastColumn, source.Grid.Merges);
-        CheckRows(slots);
+        WriteName(origin, rows);
+        WriteHeader(origin, rows);
 
-        var firstTableRow = sheet.HeaderRow ?? sheet.FirstDataRow;
-        WriteName(origin, firstTableRow);
-        WriteHeader(origin);
-
-        for (var i = 0; i < slots.Count; i++)
+        for (var i = 0; i < rows.Cards.Count; i++)
         {
-            WriteCard(sheet.Cards[i], slots[i].FirstRow, slots[i].RowSpan, origin);
+            WriteCard(sheet.Cards[i], rows.Cards[i], origin);
         }
 
-        ClearRemovedColumns(origin, firstTableRow);
+        ClearRemovedColumns(origin, rows);
     }
 
-    /// <summary>
-    /// Part A writes each card into one of the table's rows as read: the cards' row spans must be the spans of the table's cards as read,
-    /// in order. Moving cards of equal spans is just writing values; anything else needs rows inserted or deleted.
-    /// </summary>
-    private void CheckRows(List<(int FirstRow, int RowSpan)> slots)
+    private void WriteName(SheetSource origin, RowPlan rows)
     {
-        // A table with a header and no card was read with one empty card that has no row in the file; it can stay empty.
-        if (slots.Count == 0 && sheet.Cards is [{ SourceFirstRow: null } only] && only.Entries.TrueForAll(e => e.Text.Length == 0))
+        var name = sheet.TableName ?? "";
+        var firstTableRow = sheet.HeaderRow ?? sheet.FirstDataRow;
+        if (rows.NameRow is not { } row)
         {
             return;
         }
 
-        var matches = slots.Count == sheet.Cards.Count;
-        for (var i = 0; matches && i < slots.Count; i++)
-        {
-            matches = slots[i].RowSpan == sheet.Cards[i].SourceRowSpan;
-        }
-
-        if (!matches)
-        {
-            throw SpreadsheetWriteException.NotSupported(
-                $"The cards on the sheet \"{sheet.Name}\" were added, removed or reordered so that worksheet rows must be inserted or deleted.");
-        }
-    }
-
-    private void WriteName(SheetSource origin, int firstTableRow)
-    {
-        var name = sheet.TableName ?? "";
+        var column = sheet.TableNameColumn;
+        var original = "";
         if (origin.FirstRow < firstTableRow)
         {
-            var row = origin.FirstRow;
-            var column = sheet.TableNameColumn;
-            var read = source.Grid.Get(row, column);
-            var original = read is null || read.IsBlank ? "" : read.Value.DisplayText;
-            if (!string.Equals(name, original, StringComparison.Ordinal))
-            {
-                // A cleared name clears its cell; the row stays (§9.17).
-                WriteText(row, column, name);
-            }
+            var read = source.Grid.Get(origin.FirstRow, column);
+            original = read is null || read.IsBlank ? "" : read.Value.DisplayText;
         }
-        else if (name.Length > 0)
+
+        if (!string.Equals(name, original, StringComparison.Ordinal))
         {
-            throw SpreadsheetWriteException.NotSupported(
-                $"The table on the sheet \"{sheet.Name}\" was given a name; a row must be inserted above its header for it.");
+            // A cleared name clears its cell; the row stays (§9.17). A name given to a table without a name row goes in the row inserted
+            // above its header (§9.18).
+            WriteText(row, column, name);
         }
     }
 
-    private void WriteHeader(SheetSource origin)
+    private void WriteHeader(SheetSource origin, RowPlan rows)
     {
-        if (sheet.HeaderRow is not { } row)
+        if (sheet.HeaderRow is not { } row || rows.HeaderRow is not { } target)
         {
             return;
         }
@@ -141,7 +126,7 @@ internal sealed class WorksheetWriter
         for (var j = 0; j < sheet.Columns.Count; j++)
         {
             var column = sheet.Columns[j];
-            var target = sheet.FirstColumn + j;
+            var targetColumn = sheet.FirstColumn + j;
             var name = IsUnnamed(column.Name) ? "" : column.Name;
             if (column.SourceIndex is { } index)
             {
@@ -151,67 +136,115 @@ internal sealed class WorksheetWriter
                 if (string.Equals(name, original, StringComparison.Ordinal))
                 {
                     // An unchanged header keeps its cell as it is (a number stays a number); a moved one is copied (§9.3).
-                    if (from != target)
+                    if (from != targetColumn)
                     {
-                        CopyCell(row, from, row, target);
+                        CopyCell(row, from, target, targetColumn);
                     }
 
                     continue;
                 }
             }
 
-            WriteText(row, target, name);
+            WriteText(target, targetColumn, name);
         }
     }
 
-    private void WriteCard(Card card, int row, int rowSpan, SheetSource origin)
+    private void WriteCard(Card card, RowPlan.CardRows rows, SheetSource origin)
     {
-        var inOwnRows = card.SourceFirstRow == row;
-        if (!inOwnRows && rowSpan > 1 && (HasLaterRowValues(row, rowSpan, origin) || (card.SourceFirstRow is { } sourceRow && HasLaterRowValues(sourceRow, rowSpan, origin))))
-        {
-            // Values in a card's later rows belong to it but are not in the model (§9.7); moving them needs whole rows moved (part B).
-            throw SpreadsheetWriteException.NotSupported(
-                $"A card on the sheet \"{sheet.Name}\" that spans several rows with values in its later rows was moved.");
-        }
-
+        var row = rows.FirstRow;
         for (var j = 0; j < sheet.Columns.Count; j++)
         {
             var entry = card.Entries[j];
             var target = sheet.FirstColumn + j;
-            if (entry.Images.Count > 0 && (!inOwnRows || sheet.Columns[j].SourceIndex != j))
+            if (entry.Images.Count > 0 && (!rows.IsKept || sheet.Columns[j].SourceIndex != j))
             {
-                // Pictures are anchored in the drawing, not in the cell: moving them with their card or entry is part B.
+                // Pictures are anchored in the drawing, not in the cell: laying them out in other cells is part B2 of the writer.
                 throw SpreadsheetWriteException.NotSupported(
-                    $"A card or entry with pictures on the sheet \"{sheet.Name}\" was moved; pictures cannot be moved yet.");
+                    $"A card or entry with pictures on the sheet \"{sheet.Name}\" was added, duplicated or moved to another column; pictures cannot be laid out yet.");
             }
 
-            (int Row, int Column)? from = card.SourceFirstRow is { } first && sheet.Columns[j].SourceIndex is { } index
+            (int Row, int Column)? from = rows.SourceFirstRow is { } first && sheet.Columns[j].SourceIndex is { } index
                 ? (first, origin.FirstColumn + index)
                 : null;
-            WriteEntry(entry, row, target, from);
+            // A kept card's cells moved with its rows: a value in its own column is in place.
+            WriteEntry(entry, row, target, from, inPlace: rows.IsKept && from?.Column == target);
+        }
+
+        if (rows.Rows > rows.OwnRows && rows.Rows > 1)
+        {
+            MergeCard(rows);
         }
     }
 
-    private bool HasLaterRowValues(int row, int rowSpan, SheetSource origin)
+    /// <summary>
+    /// Merges each table column over a card's rows when the card gained rows (a new card of several rows, or a card whose span grew,
+    /// docs/spec.md §5.3 step 3 with §9.7 and §9.29): a column is not merged over a value in the card's later rows, nor where another merge
+    /// already covers part of the card's rows; the card's own vertical merges of a column are replaced by the longer one.
+    /// </summary>
+    private void MergeCard(RowPlan.CardRows rows)
     {
-        for (var r = row + 1; r < row + rowSpan; r++)
+        var first = rows.FirstRow;
+        var last = rows.FirstRow + rows.Rows - 1;
+        var merges = worksheet.GetFirstChild<X.MergeCells>();
+        var existing = merges?.Elements<X.MergeCell>()
+            .Select(m => (Element: m, Ok: CellReference.TryParseRange(m.Reference?.Value, out var range), Range: range))
+            .Where(m => m.Ok && m.Range.FirstRow <= last && m.Range.LastRow >= first)
+            .ToList() ?? [];
+        for (var j = 0; j < sheet.Columns.Count; j++)
         {
-            for (var c = origin.FirstColumn; c <= origin.LastColumn; c++)
+            var column = sheet.FirstColumn + j;
+            var inColumn = existing.Where(m => m.Range.FirstColumn <= column && m.Range.LastColumn >= column).ToList();
+            if (inColumn.Exists(m => m.Range.FirstColumn != m.Range.LastColumn || m.Range.FirstRow < first || m.Range.LastRow > last))
             {
-                if (source.HasValue(r, c))
-                {
-                    return true;
-                }
+                continue;
+            }
+
+            var hasLaterValue = false;
+            for (var row = first + 1; row <= last && !hasLaterValue; row++)
+            {
+                hasLaterValue = cells.Get(row, column) is { } cell && HasContent(cell);
+            }
+
+            if (hasLaterValue)
+            {
+                continue;
+            }
+
+            foreach (var (element, _, _) in inColumn)
+            {
+                element.Remove();
+            }
+
+            merges ??= InsertMergeCells();
+            merges.AppendChild(new X.MergeCell { Reference = CellIndex.Name(first, column) + ":" + CellIndex.Name(last, column) });
+        }
+
+        if (merges is not null)
+        {
+            merges.Count = (uint)merges.Elements<X.MergeCell>().Count();
+        }
+    }
+
+    private X.MergeCells InsertMergeCells()
+    {
+        var merges = new X.MergeCells();
+        // mergeCells follows sheetData and the elements that may come between them (ECMA-376 Part 1 §18.3.1.99, not verified in full).
+        OpenXmlElement after = worksheet.GetFirstChild<X.SheetData>()!;
+        foreach (var name in new[] { "sheetCalcPr", "sheetProtection", "protectedRanges", "scenarios", "autoFilter", "sortState", "dataConsolidate", "customSheetViews" })
+        {
+            if (worksheet.ChildElements.FirstOrDefault(e => e.LocalName == name) is { } element)
+            {
+                after = element;
             }
         }
 
-        return false;
+        worksheet.InsertAfter(merges, after);
+        return merges;
     }
 
-    private void WriteEntry(Entry entry, int row, int column, (int Row, int Column)? from)
+    private void WriteEntry(Entry entry, int row, int column, (int Row, int Column)? from, bool inPlace)
     {
         var value = EntryValue.Resolve(entry, context.Culture);
-        var inPlace = from == (row, column);
         // A value written elsewhere takes the style of the cell it came from: a moved card takes its formatting along.
         uint? style = !inPlace && from is { } origin ? source.Style(origin.Row, origin.Column) : null;
 
@@ -241,7 +274,9 @@ internal sealed class WorksheetWriter
 
         if (value.Formula is not null && ReferenceEquals(value, entry.Original))
         {
-            throw MovedFormula(row, column);
+            // A copy of a card (or entry) holds the formula as read, but not where it was read from, so it cannot be translated.
+            throw SpreadsheetWriteException.NotSupported(
+                $"A copied card on the sheet \"{sheet.Name}\" holds a formula, which would go to the cell {CellIndex.Name(row, column)}; a copied formula cannot be written yet.");
         }
 
         var written = WriteValue(row, column, value, entry.Text, style);
@@ -320,8 +355,8 @@ internal sealed class WorksheetWriter
         CheckChange(row, column);
         var existing = cells.Get(row, column);
         var cell = existing ?? cells.GetOrCreate(row, column);
-        Empty(cell);
-        SetStyle(cell, row, column, existing is null ? style ?? source.Style(row, column) : style);
+        Empty(cell, row, column);
+        SetStyle(cell, row, column, existing is null ? style ?? SourceStyle(row, column) : style);
         context.ValueChanged = true;
         return cell;
     }
@@ -329,7 +364,7 @@ internal sealed class WorksheetWriter
     private void Clear(int row, int column, uint? style)
     {
         var cell = cells.Get(row, column);
-        if (source.HasValue(row, column) || (cell is not null && HasContent(cell)))
+        if (SourceHasValue(row, column) || (cell is not null && HasContent(cell)))
         {
             CheckChange(row, column);
             context.ValueChanged = true;
@@ -337,7 +372,7 @@ internal sealed class WorksheetWriter
 
         if (cell is null)
         {
-            if (style is { } index && index != source.FallbackStyle(row, column))
+            if (style is { } index && index != FallbackStyle(row, column))
             {
                 SetStyle(cells.GetOrCreate(row, column), row, column, index);
             }
@@ -345,21 +380,39 @@ internal sealed class WorksheetWriter
             return;
         }
 
-        Empty(cell);
+        Empty(cell, row, column);
         SetStyle(cell, row, column, style);
     }
 
+    /// <summary>
+    /// Copies a cell as read (<paramref name="fromRow"/>, <paramref name="fromColumn"/>) to another cell after the move, with its value,
+    /// type and style. A formula is translated by the distance it moves beyond where the row shifts alone would have put it, so its
+    /// relative references move with it as in a copy; its cached value is dropped and the workbook is calculated when it is opened.
+    /// </summary>
     private void CopyCell(int fromRow, int fromColumn, int row, int column)
     {
-        if (source.HasFormula(fromRow, fromColumn))
-        {
-            throw MovedFormula(row, column);
-        }
-
         var original = source.Element(fromRow, fromColumn);
         if (original is null)
         {
             Clear(row, column, source.Style(fromRow, fromColumn));
+            return;
+        }
+
+        if (original.CellFormula is { } sourceFormula)
+        {
+            var type = sourceFormula.FormulaType?.Value;
+            var text = source.Grid.Get(fromRow, fromColumn)?.Formula
+                ?? (string.IsNullOrEmpty(sourceFormula.Text) ? null : sourceFormula.Text);
+            if (type == X.CellFormulaValues.Array || type == X.CellFormulaValues.DataTable || text is null)
+            {
+                throw SpreadsheetWriteException.NotSupported(
+                    $"An array or data table formula on the sheet \"{sheet.Name}\" would move to the cell {CellIndex.Name(row, column)}; it cannot be moved apart from its range.");
+            }
+
+            var shifted = context.References.Apply(text, sheet.Name);
+            var positional = plan?.Positional(fromRow) ?? fromRow;
+            var formulaCell = Prepare(row, column, source.Style(fromRow, fromColumn));
+            formulaCell.CellFormula = new X.CellFormula(FormulaReferences.Translate(shifted, row - positional, column - fromColumn));
             return;
         }
 
@@ -382,27 +435,35 @@ internal sealed class WorksheetWriter
     /// </summary>
     private void CheckChange(int row, int column)
     {
-        if (source.IsProtected(row, column))
+        if (Old(row) is { } old && source.IsProtected(old, column))
         {
             throw SpreadsheetWriteException.NotSupported(
                 $"The cell {CellIndex.Name(row, column)} on the sheet \"{sheet.Name}\" is part of a shared or array formula of several cells; changing it needs the formula rewritten.");
         }
 
-        if (column > sourceLastColumn && column != CellReference.MaxColumn && source.HasValue(row, column))
+        if (column > sourceLastColumn && column != CellReference.MaxColumn && SourceHasValue(row, column))
         {
             throw SpreadsheetWriteException.NotSupported(
                 $"An entry added to the table on the sheet \"{sheet.Name}\" would overwrite the cell {CellIndex.Name(row, column)} beside it.");
         }
 
-        if (source.HasFormula(row, column))
+        if (Old(row) is { } formulaRow && source.HasFormula(formulaRow, column))
         {
             context.FormulaChanged = true;
         }
     }
 
-    private SpreadsheetWriteException MovedFormula(int row, int column) =>
-        SpreadsheetWriteException.NotSupported(
-            $"A formula on the sheet \"{sheet.Name}\" would move to the cell {CellIndex.Name(row, column)}; its references would have to be rewritten.");
+    /// <summary>The row as read whose content is at <paramref name="row"/> now, or null for a new row.</summary>
+    private int? Old(int row) => plan is null ? row : plan.OldRow(row);
+
+    /// <summary>True when the cell now at this position held a value or formula as read.</summary>
+    private bool SourceHasValue(int row, int column) => Old(row) is { } old && source.HasValue(old, column);
+
+    /// <summary>The style the cell now at this position showed as read; a new row shows its column's.</summary>
+    private uint SourceStyle(int row, int column) => Old(row) is { } old ? source.Style(old, column) : source.ColumnStyle(column);
+
+    /// <summary>The style a cell without its own style shows now: its row's (which moved with it), else its column's.</summary>
+    private uint FallbackStyle(int row, int column) => Old(row) is { } old ? source.FallbackStyle(old, column) : source.ColumnStyle(column);
 
     private void ApplyStyle(int row, int column, NumberFormat? format, CellStyle? style, bool multiline)
     {
@@ -413,7 +474,7 @@ internal sealed class WorksheetWriter
 
         // A cell without its own style shows its row's or column's, as the reader reads it.
         var cell = cells.Get(row, column);
-        var current = cell?.StyleIndex?.Value ?? source.FallbackStyle(row, column);
+        var current = cell?.StyleIndex?.Value ?? FallbackStyle(row, column);
         var changed = context.Styles.Apply(current, format, style, multiline);
         if (changed != current)
         {
@@ -426,15 +487,32 @@ internal sealed class WorksheetWriter
     {
         if (style is { } index)
         {
-            cell.StyleIndex = index == 0 && source.FallbackStyle(row, column) == 0 ? null : index;
+            cell.StyleIndex = index == 0 && FallbackStyle(row, column) == 0 ? null : index;
         }
     }
 
     private static bool HasContent(X.Cell cell) => cell.CellValue is not null || cell.CellFormula is not null || cell.InlineString is not null;
 
-    /// <summary>Removes the cell's value, formula and type; its style stays (as Excel's Clear Contents keeps formatting).</summary>
-    private static void Empty(X.Cell cell)
+    /// <summary>
+    /// Removes the cell's value, formula and type; its style stays (as Excel's Clear Contents keeps formatting). A shared formula's master
+    /// first gives the other cells of its group their own formula, so they keep theirs.
+    /// </summary>
+    private void Empty(X.Cell cell, int row, int column)
     {
+        if (cell.CellFormula is { FormulaType.Value: var type, SharedIndex.Value: { } index } master
+            && type == X.CellFormulaValues.Shared && !string.IsNullOrEmpty(master.Text))
+        {
+            foreach (var (r, c, other) in FormulaRewriter.Cells(worksheet))
+            {
+                if (other != cell && other.CellFormula is { SharedIndex.Value: var si } dependent && si == index && string.IsNullOrEmpty(dependent.Text))
+                {
+                    FormulaRewriter.Unshare(dependent, FormulaReferences.Translate(master.Text, r - row, c - column));
+                }
+            }
+
+            context.FormulaChanged = true;
+        }
+
         cell.CellFormula = null;
         cell.CellValue = null;
         cell.InlineString = null;
@@ -447,15 +525,17 @@ internal sealed class WorksheetWriter
     /// Clears what removed entries leave behind (§9.19): the columns the table had to the right of its new last column, over the table's
     /// rows from the header (or first card) down. Values go, styles stay; merged ranges that reach into the cleared area are removed.
     /// </summary>
-    private void ClearRemovedColumns(SheetSource origin, int firstTableRow)
+    private void ClearRemovedColumns(SheetSource origin, RowPlan rows)
     {
+        var firstTableRow = rows.HeaderRow ?? rows.FirstDataRow;
+        var lastTableRow = rows.LastRow;
         var firstCleared = sheet.FirstColumn + sheet.Columns.Count;
         if (firstCleared > origin.LastColumn)
         {
             return;
         }
 
-        for (var row = firstTableRow; row <= origin.LastRow; row++)
+        for (var row = firstTableRow; row <= lastTableRow; row++)
         {
             for (var column = firstCleared; column <= origin.LastColumn; column++)
             {
@@ -471,7 +551,7 @@ internal sealed class WorksheetWriter
         foreach (var merge in merges.Elements<X.MergeCell>().ToList())
         {
             if (CellReference.TryParseRange(merge.Reference?.Value, out var range)
-                && range.FirstRow <= origin.LastRow && range.LastRow >= firstTableRow
+                && range.FirstRow <= lastTableRow && range.LastRow >= firstTableRow
                 && range.FirstColumn <= origin.LastColumn && range.LastColumn >= firstCleared)
             {
                 merge.Remove();
@@ -514,7 +594,7 @@ internal sealed class WorksheetWriter
         {
             for (var j = 0; j < sheet.Columns.Count; j++)
             {
-                WriteEntry(card.Entries[j], row, sheet.FirstColumn + j, null);
+                WriteEntry(card.Entries[j], row, sheet.FirstColumn + j, null, inPlace: false);
             }
 
             row++;
@@ -539,7 +619,9 @@ internal sealed class WorksheetWriter
         for (var i = 0; i < texts.Length; i++)
         {
             var row = i + 1;
-            if (!string.Equals(source.Grid.Get(row, CellReference.MaxColumn)?.PlainText, texts[i], StringComparison.Ordinal))
+            // A metadata cell that moved with its row was removed (RowMover): it is written again in its row.
+            var original = Old(row) == row ? source.Grid.Get(row, CellReference.MaxColumn)?.PlainText : null;
+            if (!string.Equals(original, texts[i], StringComparison.Ordinal))
             {
                 WriteText(row, CellReference.MaxColumn, texts[i]);
             }

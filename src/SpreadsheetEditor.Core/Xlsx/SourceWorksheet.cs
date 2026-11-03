@@ -24,15 +24,14 @@ internal sealed class SourceWorksheet
                 continue;
             }
 
-            // A shared formula's first cell holds the text the group's other cells are computed from, and an array or data table
-            // formula fills its whole range: changing such a cell would break the other cells (not supported until formulas can be
-            // translated, docs/roadmap.md).
+            // An array or data table formula fills its whole range: changing one of its cells would break the others. (A shared
+            // formula's master gives the other cells of its group their own formula when it is changed, WorksheetWriter.)
             var type = formula.FormulaType?.Value;
-            if ((type == X.CellFormulaValues.Shared || type == X.CellFormulaValues.Array || type == X.CellFormulaValues.DataTable)
+            if ((type == X.CellFormulaValues.Array || type == X.CellFormulaValues.DataTable)
                 && CellReference.TryParseRange(formula.Reference?.Value, out var range)
                 && (range.FirstRow != range.LastRow || range.FirstColumn != range.LastColumn))
             {
-                protectedRanges.Add(type == X.CellFormulaValues.Shared ? new MergeRange(row, column, row, column) : range);
+                protectedRanges.Add(range);
             }
         }
     }
@@ -50,6 +49,9 @@ internal sealed class SourceWorksheet
     /// <summary>The style a cell without its own style shows: its row's or column's, else 0.</summary>
     public uint FallbackStyle(int row, int column) => Grid.FallbackStyleIndex(row, column);
 
+    /// <summary>The style a cell of a new row shows: its column's, else 0.</summary>
+    public uint ColumnStyle(int column) => Grid.FallbackStyleIndex(0, column);
+
     /// <summary>The cell element at a position, or null.</summary>
     public X.Cell? Element(int row, int column) => elements.GetValueOrDefault(Key(row, column));
 
@@ -60,8 +62,8 @@ internal sealed class SourceWorksheet
     public bool HasFormula(int row, int column) => Element(row, column)?.CellFormula is not null;
 
     /// <summary>
-    /// True when changing the cell would break a formula of other cells: it is the first cell of a shared formula used by more cells, or
-    /// it lies in an array or data table formula's range of more than one cell.
+    /// True when changing the cell would break a formula of other cells: it lies in an array or data table formula's range of more than
+    /// one cell.
     /// </summary>
     public bool IsProtected(int row, int column) =>
         protectedRanges.Exists(r => row >= r.FirstRow && row <= r.LastRow && column >= r.FirstColumn && column <= r.LastColumn);
