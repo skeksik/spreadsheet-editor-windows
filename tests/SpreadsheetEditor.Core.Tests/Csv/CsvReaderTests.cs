@@ -188,7 +188,7 @@ public sealed class CsvReaderTests
     {
         var sheet = ReadSheet("Date,Number,Flag,Spaces\r\n2024-01-15 meeting notes,0012,TRUE,  padded  \r\n2024-01-15,1e3,false,\r\n");
 
-        Assert.AreEqual("2024-01-15 meeting notes|0012|TRUE|  padded  ¶2024-01-15|1e3|false|", Describe(sheet));
+        Assert.AreEqual("Date|Number|Flag|Spaces¶2024-01-15 meeting notes|0012|TRUE|  padded  ¶2024-01-15|1e3|false|", Describe(sheet));
         var first = sheet.Cards[0].Entries[0];
         Assert.AreEqual(new CellValue(CellValueKind.Text, "2024-01-15 meeting notes"), first.Original);
         Assert.AreEqual(new CellValue(CellValueKind.Text, "1e3"), sheet.Cards[1].Entries[1].Original);
