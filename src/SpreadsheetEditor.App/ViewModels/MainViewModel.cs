@@ -220,6 +220,12 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _editor.MarkSaved();
         }
+        else
+        {
+            // A .csv save wrote one sheet of several: the file lacks the others, so the document is modified even if it was never
+            // edited (§9.34), and the title shows the marker.
+            _editor.MarkModified();
+        }
         RefreshTitle();
         return true;
     }
