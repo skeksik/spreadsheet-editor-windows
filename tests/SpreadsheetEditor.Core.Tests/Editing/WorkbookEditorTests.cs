@@ -4,7 +4,7 @@ using SpreadsheetEditor.Core.Model;
 namespace SpreadsheetEditor.Core.Tests.Editing;
 
 [TestClass]
-public sealed class WorkbookEditorTests
+public sealed partial class WorkbookEditorTests
 {
     private static readonly string[] ExpectedTypingSteps = ["111 2", "111 2", "11 2", "1 2", "1 y", "x y"];
 
@@ -90,7 +90,7 @@ public sealed class WorkbookEditorTests
     {
         var (editor, sheet) = Open(cards: 1);
 
-        Assert.IsFalse(WorkbookEditor.CanRemoveCard(sheet));
+        Assert.IsFalse(editor.CanRemoveCard(sheet));
         var error = Assert.ThrowsExactly<InvalidOperationException>(() => editor.RemoveCard(sheet, sheet.Cards[0]));
         Assert.AreEqual("Cannot remove the last card.", error.Message);
         Assert.AreEqual(1, sheet.Cards.Count);
@@ -238,14 +238,14 @@ public sealed class WorkbookEditorTests
         var (editor, sheet) = Open(cards: 2);
         var all = sheet.Columns.ToArray();
 
-        Assert.IsFalse(WorkbookEditor.CanRemoveEntries(sheet, all));
-        Assert.IsFalse(WorkbookEditor.CanRemoveEntries(sheet, []));
-        Assert.IsTrue(WorkbookEditor.CanRemoveEntries(sheet, [all[0]]));
+        Assert.IsFalse(editor.CanRemoveEntries(sheet, all));
+        Assert.IsFalse(editor.CanRemoveEntries(sheet, []));
+        Assert.IsTrue(editor.CanRemoveEntries(sheet, [all[0]]));
         Assert.ThrowsExactly<InvalidOperationException>(() => editor.RemoveEntries(sheet, all));
         Assert.ThrowsExactly<ArgumentException>(() => editor.RemoveEntries(sheet, []));
 
         editor.RemoveEntries(sheet, [all[0]]);
-        Assert.IsFalse(WorkbookEditor.CanRemoveEntries(sheet, [all[1]]));
+        Assert.IsFalse(editor.CanRemoveEntries(sheet, [all[1]]));
         Assert.ThrowsExactly<InvalidOperationException>(() => editor.RemoveEntries(sheet, [all[1]]));
         Assert.AreEqual("r0b|r1b", Describe(sheet));
     }

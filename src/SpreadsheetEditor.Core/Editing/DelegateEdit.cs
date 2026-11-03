@@ -8,4 +8,6 @@ internal sealed class DelegateEdit(Func<WorkbookChange[]> apply, Func<WorkbookCh
     public IReadOnlyList<WorkbookChange> Revert() => revert();
 
     public bool TryMerge(IEdit next) => false;
+
+    public bool IsEmpty => false;
 }

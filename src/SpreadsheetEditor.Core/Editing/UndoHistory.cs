@@ -19,7 +19,10 @@ internal sealed class UndoHistory
 
     public bool IsModified => undo.Count != savedDepth;
 
-    /// <summary>Records an edit that has just been applied: merges it into the last step while typing continues, drops the redo steps.</summary>
+    /// <summary>
+    /// Records an edit that has just been applied: merges it into the last step while typing continues, drops the redo steps. A merged
+    /// step that now changes nothing is dropped, and the next edit starts a new step.
+    /// </summary>
     public void Record(IEdit edit)
     {
         if (redo.Count > 0)
@@ -34,6 +37,12 @@ internal sealed class UndoHistory
 
         if (mergeOpen && undo.Count > 0 && undo.Count != savedDepth && undo[^1].TryMerge(edit))
         {
+            if (undo[^1].IsEmpty)
+            {
+                undo.RemoveAt(undo.Count - 1);
+                mergeOpen = false;
+            }
+
             return;
         }
 
