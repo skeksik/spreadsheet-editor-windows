@@ -1,6 +1,6 @@
 # Excel check
 
-Files saved by the xlsx writer (PRs #19, #21, #22) have not been opened in Excel yet, and CI cannot do it. This check opens nine sample
+Files saved by the xlsx writer (PRs #19, #21, #22) have not been opened in Excel yet, and CI cannot do it. This check opens ten sample
 workbooks and one control file in Excel on the owner's PC. Each sample is made the way the app makes one: a source workbook is built
 in code, read with `XlsxReader`, edited with `WorkbookEditor` and saved with `XlsxWriter`. Roadmap items: `test/xlsx-in-excel` and
 `spike/jpeg-orientation` (M1).
@@ -20,7 +20,7 @@ Remove-Item Env:EXCEL_CHECK_DIR
 explorer "$env:TEMP\excel-check"
 ```
 
-The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `09-jpeg-orientation.xlsx`, a
+The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `10-table-ends.xlsx`, a
 few KB each. Running the command again overwrites them. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder
 and delete them.
 
@@ -105,17 +105,19 @@ card fewer and two more, so everything below the table moved down one row.
 
 Sheet **Cards**:
 - A1:B1 `Name`, `Qty`. Rows 2–7: Elder 5, Apple 1, Grape 7, Cherry 3, Damson 4, Fig 6. Rows 8–20 are empty.
-- A21 `Total`, B21 **20**, formula `=SUM(B2:B6)`. The range grew by the row inserted inside it (Grape) and shrank by the row removed
-  (Banana). Fig was added below the range, so it is not counted, as when you insert a row under a range in Excel.
-- A22 `Count`, B22 **5**, formula `=COUNTA(A2:A6)`.
-- A23 `Cherry's qty`, B23 **1**, formula `=B3`. References to the table stay with the row, not the card, as after a sort (spec §9.20).
-  Row 3 now holds Apple.
+- A21 `Total`, B21 **26**, formula `=SUM(B2:B7)`. The range grew by the row inserted inside it (Grape) and shrank by the row removed
+  (Banana). It reached the table's last card, so it also covers Fig, added at the end, as an Excel Table's references do (spec §9.20).
+  Elder, moved to the top, is counted because the range keeps covering the same block of table rows.
+- A22 `Count`, B22 **6**, formula `=COUNTA(A2:A7)`, for the same reasons.
+- A23 `Cherry's qty`, B23 **3**, formula `=B5`. A reference to a card's cell follows the card, as after cut and insert in Excel
+  (spec §9.20): row 5 now holds Cherry.
 - A24 `Banana's qty`, B24 **#REF!**, formula `=#REF!`. Its row was deleted.
 - D21:E21 merged into one cell, holding `merged note below the table`.
 - A25 `yellow cell below the table` on a yellow fill.
 - Page Layout, Print Area (or File, Print, preview): `A1:E25`.
 
-Sheet **Report**: B2 **20** (`=Cards!B21`), B3 **5** (`=Cards!B2`, which is Elder's row now), B4 **20** (`=CardTotal`). In Formulas,
+Sheet **Report**: B2 **26** (`=Cards!B21`), B3 **1** (`=Cards!B3`: it pointed at Apple's quantity in row 2 and followed Apple to
+row 3), B4 **26** (`=CardTotal`). In Formulas,
 Name Manager, the name `CardTotal` refers to `=Cards!$B$21`.
 
 ### 04-table-name.xlsx: a table name inserted
@@ -201,6 +203,18 @@ red, its bottom half blue, with a black square at the top-left corner**.
 in the results table below. If Excel applies it, `feat/picture-facts` should swap a JPEG's width and height for orientations 5–8, as
 the roadmap says.
 
+### 10-table-ends.xlsx: cards added at both ends of a table
+
+Sheet **Ends** had three cards in rows 2–4, Apple 1, Banana 2, Cherry 3, with a total `=SUM(B2:B4)` in row 20 and `=B2` (Apple's
+quantity) in row 21. The edits: Moss 9 added at the top, Fig 6 added at the end.
+
+Sheet **Ends**:
+- A1:B1 `Name`, `Qty`. Rows 2–6: Moss 9, Apple 1, Banana 2, Cherry 3, Fig 6.
+- A22 `Total`, B22 **21**, formula `=SUM(B2:B6)`. The range covered every card, so it covers both new cards, as an Excel Table's
+  references do (spec §9.20; the top is the manager's choice within the owner's answer). In plain Excel, inserting a row above
+  `B2:B4` would move the range down to `B3:B5` instead, and a row inserted below it would not be counted.
+- A23 `Apple's qty`, B23 **1**, formula `=B3`: it followed Apple.
+
 ## Results
 
 Filled in by the local check: the date, the Excel version (File, Account, About Excel), and per file whether it opened without a repair
@@ -220,3 +234,4 @@ Excel version: … · Date: … · Windows display language and region format: �
 | 07-pictures.xlsx | | | |
 | 08-new-workbook.xlsx | | | |
 | 09-jpeg-orientation.xlsx | | | B3: looks like B2 / turned |
+| 10-table-ends.xlsx | | | |

@@ -9,12 +9,30 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// table moved so that it keeps its place relative to the table's end.
 /// </summary>
 /// <remarks>
-/// <para>The change is also expressed as a sequence of <see cref="RowShift"/>s, which every reference to the sheet's rows goes through
-/// (formulas, defined names, ranges): first the removed cards' rows are deleted, bottom up, then the new rows are inserted, top down, at
-/// their final rows (the table name row first). Reordering the cards that stay is not in that sequence: a reference to a row of the table
-/// keeps pointing at that position, as after a sort in a spreadsheet program, whichever card ends up there (manager, 2026-11-03). Only what
-/// belongs to a row (its cells, height and style, the merges, hyperlinks, comments and pictures inside one card's rows) moves with its
-/// card; <see cref="Map"/> gives that move and <see cref="Positional"/> the position the shifts alone give.</para>
+/// <para>The change is also expressed as a sequence of <see cref="RowShift"/>s: first the removed cards' rows are deleted, bottom up, then
+/// the new rows are inserted, top down, at their final rows (the table name row first). Reordering the cards that stay is not in that
+/// sequence. What belongs to a row (its cells, height and style, the merges, hyperlinks, comments and pictures inside one card's rows)
+/// moves with its card (<see cref="Map"/>, <see cref="MoveRange"/>). A <c>sqref</c> does not follow cards, since one range may cover
+/// several: conditional formatting's and data validation's go through the shifts and then grow to cards added at the table's ends as
+/// rule 4 below says (<see cref="GrowRange"/>; manager, 2026-11-03), so a card added at either end gets the column's validation and
+/// colour rules; ignored errors', protected ranges' and a table part's range go through the shifts alone (<see cref="ShiftRange"/>).</para>
+/// <para>References in formulas, defined names (the print area included), hyperlink locations and charts go through
+/// <see cref="MoveArea"/> (docs/spec.md §9.20; owner, 2026-11-03, and manager within the owner's answer):</para>
+/// <list type="number">
+/// <item>A cell follows its card, as a reference to a cut cell follows it in Excel: a reference to Cherry's quantity points at Cherry's
+/// row after the save; one to a removed card's cell becomes <c>#REF!</c>; one outside the table moves with the shifts.</item>
+/// <item>A range whose rows lie inside one kept card's rows moves with the card, as its merges do.</item>
+/// <item>Any other range (endpoints in different cards, or one in the table and one outside it) keeps covering the same block of rows:
+/// it goes through the shifts alone, growing by rows inserted inside it and shrinking by rows deleted from it; a range whose rows are all
+/// deleted becomes <c>#REF!</c>. Not verified against Excel: whether Excel's Insert Cut Cells moves a range's endpoint that is itself a
+/// moved cell (Microsoft's "Move or copy cells, rows, and columns" and "Move or copy a formula", read 2026-11-03, do not say). This rule
+/// keeps a total over the table a total over the table instead.</item>
+/// <item>As an Excel Table's references do: a range whose bottom row as read is the table's last card row as read ends at the table's
+/// last card row after the save, so cards added at the end count; a range from the first card row to the last (or below) as read starts
+/// at the first card row after the save, so cards added at the top count too (manager, 2026-11-03, within the owner's answer). When the
+/// table has no card rows left, rule 3 alone applies.</item>
+/// <item>Whole columns never change; whole rows (<c>2:6</c>) go through the shifts alone.</item>
+/// </list>
 /// <para>A card read from the file keeps its rows and gets more when its <see cref="Card.SourceRowSpan"/> asks for more; any other card
 /// (new or duplicated, §9.22) gets <see cref="Card.SourceRowSpan"/> new rows.</para>
 /// </remarks>
@@ -22,11 +40,11 @@ internal sealed class RowPlan
 {
     private readonly Dictionary<int, int> kept = [];
     private readonly Dictionary<int, int> keptBack = [];
-    private readonly Dictionary<int, int> positional = [];
     private readonly Dictionary<int, (int First, int Last)> slotOf = [];
     private readonly HashSet<int> removed = [];
     private int dataLastRow;
     private bool insertsName;
+    private (int First, int Last)? readData;
 
     /// <summary>The row shifts in the order they apply: deletions (bottom up), then insertions (top down).</summary>
     public List<RowShift> Shifts { get; } = [];
@@ -143,9 +161,8 @@ internal sealed class RowPlan
             plan.Shifts.Add(RowShift.Insert(sheet.Name, firstTableRow, 1));
         }
 
-        // The final layout: each card's rows in order. A kept card's own rows are "kept positions"; its extra rows and new cards' rows are
-        // inserted. Positionally the kept rows fill the kept positions in the order they were read.
-        var keptPositions = new List<int>();
+        // The final layout: each card's rows in order. A kept card's own rows keep their content; its extra rows and new cards' rows are
+        // inserted.
         var inserted = new List<int>();
         var cursor = plan.FirstDataRow;
         foreach (var (slot, rows) in layout)
@@ -157,7 +174,6 @@ internal sealed class RowPlan
                 {
                     plan.kept[slots[index].FirstRow + k] = cursor + k;
                     plan.keptBack[cursor + k] = slots[index].FirstRow + k;
-                    keptPositions.Add(cursor + k);
                 }
             }
 
@@ -168,12 +184,6 @@ internal sealed class RowPlan
 
             plan.Cards.Add(new CardRows(cursor, rows, slot is { } i ? slots[i].FirstRow : null, own));
             cursor += rows;
-        }
-
-        var keptOld = plan.kept.Keys.Order().ToList();
-        for (var j = 0; j < keptOld.Count; j++)
-        {
-            plan.positional[keptOld[j]] = keptPositions[j];
         }
 
         for (var i = 0; i < inserted.Count;)
@@ -190,6 +200,7 @@ internal sealed class RowPlan
         }
 
         plan.dataLastRow = cursor - 1;
+        plan.readData = slots.Count > 0 ? (slots[0].FirstRow, slots[^1].FirstRow + slots[^1].RowSpan - 1) : null;
         plan.insertsName = insertName;
         plan.LastRow = Math.Max(cursor - 1, plan.HeaderRow ?? plan.FirstRow);
         plan.ChangesRows = plan.Shifts.Count > 0 || plan.kept.Any(pair => pair.Key != pair.Value);
@@ -207,15 +218,118 @@ internal sealed class RowPlan
         return removed.Contains(row) ? null : ShiftPoint(row);
     }
 
-    /// <summary>The row the shifts alone move a row as read to (references are moved so), or null when it is deleted.</summary>
-    public int? Positional(int row)
+    /// <summary>
+    /// Where a reference to this sheet's rows as read points after the change (docs/spec.md §9.20); null when its cells are deleted
+    /// (<c>#REF!</c>). The rules are in the class's remarks.
+    /// </summary>
+    internal A1Area? MoveArea(A1Area area)
     {
-        if (positional.TryGetValue(row, out var moved))
+        if (area.Kind == A1AreaKind.Columns)
         {
-            return moved;
+            return area;
         }
 
-        return removed.Contains(row) ? null : ShiftPoint(row);
+        if (area.Kind == A1AreaKind.Cells && !area.IsRange)
+        {
+            // A cell follows its card, or goes with its deleted row.
+            return Map(area.First.Row) is { } row ? WithRows(area, row, row) : null;
+        }
+
+        var top = Math.Min(area.First.Row, area.Last.Row);
+        var bottom = Math.Max(area.First.Row, area.Last.Row);
+        if (area.Kind == A1AreaKind.Cells && CardOffset(top, bottom) is { } offset)
+        {
+            return offset == 0 ? area : WithRows(area, top + offset, bottom + offset);
+        }
+
+        return Shift(area) is { } shifted ? Grow(area, shifted) : null;
+    }
+
+    /// <summary>
+    /// A <c>sqref</c> of conditional formatting or data validation (ranges separated by spaces) moved by the shifts, each range then
+    /// growing to cards added at the table's ends as rule 4 says; null when every range is deleted. Ranges do not follow cards: one
+    /// range may cover several.
+    /// </summary>
+    /// <exception cref="FormatException">A part is not an A1 range without a sheet name.</exception>
+    public string? GrowRange(string range)
+    {
+        var parts = new List<string>();
+        foreach (var part in range.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!A1Area.TryParse(part, 0, out var area, out var end) || end != part.Length)
+            {
+                throw new FormatException($"'{part}' is not a cell range.");
+            }
+
+            if (Shift(area) is { } shifted)
+            {
+                var grown = Grow(area, shifted);
+                parts.Add(grown == area ? part : grown.ToString());
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join(' ', parts);
+    }
+
+    /// <summary>An area moved by the shifts alone; null when every cell of it is deleted.</summary>
+    private A1Area? Shift(A1Area area)
+    {
+        A1Area? current = area;
+        foreach (var shift in Shifts)
+        {
+            if (current is not { } a)
+            {
+                return null;
+            }
+
+            current = FormulaReferences.ShiftArea(a, shift);
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Rule 4: a range of cells as read (<paramref name="area"/>) that reached the table's last card row reaches it after the change,
+    /// and one that covered every card starts at the first card row; <paramref name="shifted"/> is the range moved by the shifts.
+    /// </summary>
+    private A1Area Grow(A1Area area, A1Area shifted)
+    {
+        if (area.Kind != A1AreaKind.Cells || !area.IsRange || readData is not { } read || dataLastRow < FirstDataRow)
+        {
+            return shifted;
+        }
+
+        var top = Math.Min(area.First.Row, area.Last.Row);
+        var bottom = Math.Max(area.First.Row, area.Last.Row);
+        var newTop = Math.Min(shifted.First.Row, shifted.Last.Row);
+        var newBottom = Math.Max(shifted.First.Row, shifted.Last.Row);
+        if (bottom == read.Last)
+        {
+            newBottom = Math.Max(newBottom, dataLastRow);
+        }
+
+        if (top == read.First && bottom >= read.Last)
+        {
+            newTop = Math.Min(newTop, FirstDataRow);
+        }
+
+        return WithRows(shifted, newTop, newBottom);
+    }
+
+    /// <summary>The area with these top and bottom rows, keeping the order its parts were written in.</summary>
+    private static A1Area WithRows(A1Area area, int top, int bottom)
+    {
+        if (!area.IsRange)
+        {
+            return area with { First = area.First with { Row = top }, Last = area.Last with { Row = top } };
+        }
+
+        var firstIsTop = area.First.Row <= area.Last.Row;
+        return area with
+        {
+            First = area.First with { Row = firstIsTop ? top : bottom },
+            Last = area.Last with { Row = firstIsTop ? bottom : top },
+        };
     }
 
     /// <summary>

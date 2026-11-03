@@ -4,16 +4,16 @@ using SpreadsheetEditor.Core.Model;
 namespace SpreadsheetEditor.Core.Xlsx;
 
 /// <summary>
-/// What one save does to every formula's references: the sheets renamed (docs/spec.md §9.30) and the rows each sheet inserts or deletes
-/// (§9.20), in that order, so that row shifts name sheets by their new names.
+/// What one save does to every formula's references: the sheets renamed (docs/spec.md §9.30) and the rows each sheet inserts, deletes or
+/// moves (§9.20, <see cref="RowPlan.MoveArea"/>), in that order, so that row changes name sheets by their new names.
 /// </summary>
 internal sealed class ReferenceTransform
 {
     private readonly List<(string Old, string New)> renames = [];
-    private readonly Dictionary<string, List<RowShift>> shifts = new(SheetNames.Comparer);
+    private readonly Dictionary<string, RowPlan> rows = new(SheetNames.Comparer);
 
     /// <summary>True when the transform changes nothing.</summary>
-    public bool IsEmpty => renames.Count == 0 && shifts.Count == 0;
+    public bool IsEmpty => renames.Count == 0 && rows.Count == 0;
 
     public void AddRename(string oldName, string newName)
     {
@@ -26,16 +26,17 @@ internal sealed class ReferenceTransform
     /// <summary>The renamed sheets, old name to new.</summary>
     public IReadOnlyList<(string Old, string New)> Renames => renames;
 
-    public void AddShifts(string sheetName, IReadOnlyList<RowShift> sheetShifts)
+    /// <summary>Adds the rows a sheet (by its new name) inserts, deletes or moves; a plan that changes no row is ignored.</summary>
+    public void AddRows(string sheetName, RowPlan plan)
     {
-        if (sheetShifts.Count > 0)
+        if (plan.ChangesRows)
         {
-            shifts[sheetName] = [.. sheetShifts];
+            rows[sheetName] = plan;
         }
     }
 
     /// <summary>
-    /// The formula with renamed sheets' prefixes rewritten and references to shifted rows moved.
+    /// The formula with renamed sheets' prefixes rewritten and references to inserted, deleted or moved rows moved.
     /// </summary>
     /// <param name="formula">The formula text, with or without its leading <c>=</c>.</param>
     /// <param name="formulaSheet">The (new) name of the sheet the formula lives on, which unqualified references point at; null for a
@@ -43,12 +44,9 @@ internal sealed class ReferenceTransform
     public string Apply(string formula, string? formulaSheet)
     {
         var text = Rename(formula);
-        foreach (var (_, list) in shifts)
+        foreach (var (sheet, plan) in rows)
         {
-            foreach (var shift in list)
-            {
-                text = FormulaReferences.ShiftRows(text, formulaSheet, shift);
-            }
+            text = FormulaReferences.MapRows(text, formulaSheet, sheet, plan.MoveArea);
         }
 
         return text;

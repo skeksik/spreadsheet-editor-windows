@@ -151,6 +151,38 @@ public static partial class FormulaReferences
     }
 
     /// <summary>
+    /// Returns <paramref name="formula"/> with every reference to the sheet <paramref name="sheet"/> replaced by what
+    /// <paramref name="map"/> makes of its area (the sheet prefix is kept): <see langword="null"/> writes <c>#REF!</c>. References to
+    /// other sheets, to several sheets and to other workbooks are copied unchanged, as in <see cref="ShiftRows"/>.
+    /// </summary>
+    /// <param name="formula">The formula text, with or without its leading <c>=</c>.</param>
+    /// <param name="formulaSheet">The sheet the formula lives on, which unqualified references point at; <see langword="null"/> when
+    /// it has none (a workbook-level defined name, a chart).</param>
+    /// <param name="sheet">The sheet whose references are mapped.</param>
+    /// <param name="map">The new area of a reference's area, or <see langword="null"/> when its cells are gone.</param>
+    internal static string MapRows(string formula, string? formulaSheet, string sheet, Func<A1Area, A1Area?> map)
+    {
+        ArgumentNullException.ThrowIfNull(formula);
+        ArgumentNullException.ThrowIfNull(sheet);
+        ArgumentNullException.ThrowIfNull(map);
+        var unqualifiedMoves = formulaSheet is not null && SheetNames.Comparer.Equals(formulaSheet, sheet);
+        return Rewrite(formula, token =>
+        {
+            if (token.IsMultiSheetOrExternal)
+            {
+                return null;
+            }
+            var moves = token.SheetName is null ? unqualifiedMoves : SheetNames.Comparer.Equals(token.SheetName, sheet);
+            if (!moves)
+            {
+                return null;
+            }
+            var mapped = map(token.Area);
+            return mapped == token.Area ? null : mapped?.ToString() ?? RefError;
+        });
+    }
+
+    /// <summary>
     /// Returns a range on <see cref="RowShift.Sheet"/> moved for the inserted or deleted rows, by the rules of
     /// <see cref="ShiftRows"/>: a merge (<c>A1:C3</c>), a table's range, or a list of ranges separated by spaces (a <c>sqref</c>).
     /// Ranges whose cells are all deleted are dropped; when none is left the result is <see langword="null"/>. A print area or a
@@ -240,7 +272,7 @@ public static partial class FormulaReferences
     }
 
     /// <summary>The area after the shift, or <see langword="null"/> when every cell it covers is deleted.</summary>
-    private static A1Area? ShiftArea(A1Area area, RowShift shift)
+    internal static A1Area? ShiftArea(A1Area area, RowShift shift)
     {
         if (area.Kind == A1AreaKind.Columns)
         {

@@ -96,18 +96,19 @@ public sealed partial class ExcelCheckTests
             sheet.Cards.Select(c => $"{c.Entries[0].Text} {c.Entries[1].Text}").ToArray(), "Elder 5", "Apple 1", "Grape 7", "Cherry 3", "Damson 4",
             "Fig 6");
 
-        // One card removed and two added: everything below the table moved down one row, from row 20 to 21.
+        // One card removed and two added: everything below the table moved down one row, from row 20 to 21. The totals reached the
+        // last card, so they cover Fig, added at the end; Cherry's qty follows Cherry to row 5 (spec §9.20).
         using var package = new XlsxPackage(saved.Bytes);
         Assert.AreEqual("Total", package.Text("Cards", "A21"));
-        Assert.AreEqual("SUM(B2:B6)", Formula(package, "Cards", "B21"));
-        Assert.AreEqual("COUNTA(A2:A6)", Formula(package, "Cards", "B22"));
-        Assert.AreEqual("B3", Formula(package, "Cards", "B23"));
+        Assert.AreEqual("SUM(B2:B7)", Formula(package, "Cards", "B21"));
+        Assert.AreEqual("COUNTA(A2:A7)", Formula(package, "Cards", "B22"));
+        Assert.AreEqual("B5", Formula(package, "Cards", "B23"));
         Assert.AreEqual("#REF!", Formula(package, "Cards", "B24"));
         Assert.AreEqual("merged note below the table", package.Text("Cards", "D21"));
         CollectionAssert.Contains(Merges(package, "Cards"), "D21:E21");
         Assert.AreEqual("yellow cell below the table", package.Text("Cards", "A25"));
         Assert.AreEqual("Cards!B21", Formula(package, "Report", "B2"));
-        Assert.AreEqual("Cards!B2", Formula(package, "Report", "B3"));
+        Assert.AreEqual("Cards!B3", Formula(package, "Report", "B3"), "Apple's qty follows Apple to row 3");
         Assert.AreEqual("Cards!$B$21", DefinedName(package, "CardTotal"));
         Assert.AreEqual("Cards!$A$1:$E$25", DefinedName(package, "_xlnm.Print_Area", 0));
     }
@@ -299,6 +300,18 @@ public sealed partial class ExcelCheckTests
     private static string DefinedName(XlsxPackage package, string name, uint? localSheetId = null) =>
         package.Workbook.DefinedNames!.Elements<X.DefinedName>()
             .Single(n => n.Name == name && n.LocalSheetId?.Value == localSheetId).Text;
+
+    [TestMethod]
+    public void SampleTableEnds()
+    {
+        var saved = Save("10-table-ends.xlsx");
+        AssertSequence(saved.Sheet("Ends").Cards.Select(c => c.Entries[0].Text).ToArray(), "Moss", "Apple", "Banana", "Cherry", "Fig");
+
+        using var package = new XlsxPackage(saved.Bytes);
+        Assert.AreEqual("Total", package.Text("Ends", "A22"));
+        Assert.AreEqual("SUM(B2:B6)", Formula(package, "Ends", "B22"));
+        Assert.AreEqual("B3", Formula(package, "Ends", "B23"));
+    }
 
     private static (string, double)[] RowHeights(XlsxPackage package, string sheet) =>
         package.Worksheet(sheet).Descendants<X.Row>().Where(r => r.Height is not null)

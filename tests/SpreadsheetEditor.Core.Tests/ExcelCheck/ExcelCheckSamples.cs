@@ -351,6 +351,32 @@ internal static class ExcelCheckSamples
         return editor.Workbook;
     }
 
+    /// <summary>
+    /// 10: cards added at both ends of a table with a total over every card and a reference to one card below it: the total covers both
+    /// new cards, as an Excel Table's references do, and the reference follows its card.
+    /// </summary>
+    public static Workbook TableEnds()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Ends")
+            .Row("A1", "Name", "Qty")
+            .Row("A2", "Apple", 1)
+            .Row("A3", "Banana", 2)
+            .Row("A4", "Cherry", 3)
+            .Set("A20", "Total").Formula("B20", "SUM(B2:B4)", 6)
+            .Set("A21", "Apple's qty").Formula("B21", "B2", 1);
+        AddCheckSheet(book, "10 table ends: Moss added at the top, Fig added at the end; the total counts both.");
+
+        var (editor, sheet) = Open(book, "Ends");
+        var moss = editor.InsertCardAbove(sheet, sheet.Cards[0]);
+        Type(editor, sheet, moss, "Name", "Moss");
+        Type(editor, sheet, moss, "Qty", "9");
+        var fig = editor.AddCard(sheet);
+        Type(editor, sheet, fig, "Name", "Fig");
+        Type(editor, sheet, fig, "Qty", "6");
+        return editor.Workbook;
+    }
+
     /// <summary>Every sample, by file name, in the order of the notes.</summary>
     public static IReadOnlyList<(string FileName, Func<Workbook> Build)> All { get; } =
     [
@@ -363,6 +389,7 @@ internal static class ExcelCheckSamples
         ("07-pictures.xlsx", Pictures),
         ("08-new-workbook.xlsx", NewWorkbook),
         ("09-jpeg-orientation.xlsx", JpegOrientation),
+        ("10-table-ends.xlsx", TableEnds),
     ];
 
     /// <summary>A Calibri 11 font, its children in the schema's order (b, i, sz, color, name).</summary>
