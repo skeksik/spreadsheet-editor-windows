@@ -573,6 +573,45 @@ public sealed class WorkbookEditor
         return true;
     }
 
+    /// <summary>
+    /// Inserts a copy of a sheet directly after it, named "&lt;name&gt; (Copy)", or "(Copy 1)", "(Copy 2)", ... when that is used
+    /// (<see cref="SheetNames.CopyName"/>; skipped worksheets count as used). The copy is deep: new columns, cards and entries with the
+    /// source's names, text, values as read, styles, pictures and row spans, and its table position, current table name (§9.32) and
+    /// picture layout. The aspect lock is not copied (§2.3). Read cards and columns keep their source rows and positions, because the
+    /// writer copies the whole worksheet for the copy (§9.30) and writes its table there as an edit of what was read.
+    /// </summary>
+    public Sheet DuplicateSheet(Sheet sheet)
+    {
+        CheckSheet(sheet);
+        var copy = new Sheet(SheetNames.CopyName(sheet.Name, UsedSheetNames()))
+        {
+            TableName = sheet.TableName,
+            TableNameColumn = sheet.TableNameColumn,
+            FirstColumn = sheet.FirstColumn,
+            HeaderRow = sheet.HeaderRow,
+            FirstDataRow = sheet.FirstDataRow,
+            ImageLayout = sheet.ImageLayout,
+            Source = sheet.Source is { } source ? source with { IsCopy = true } : null,
+        };
+        copy.Columns.AddRange(sheet.Columns.Select(column =>
+            new Column(column.Name) { IsImageColumn = column.IsImageColumn, SourceIndex = column.SourceIndex }));
+        foreach (var card in sheet.Cards)
+        {
+            var cardCopy = new Card { SourceRowSpan = card.SourceRowSpan, SourceFirstRow = card.SourceFirstRow };
+            foreach (var entry in card.Entries)
+            {
+                var entryCopy = new Entry { Text = entry.Text, Original = entry.Original, Style = entry.Style };
+                entryCopy.Images.AddRange(entry.Images);
+                cardCopy.Entries.Add(entryCopy);
+            }
+
+            copy.Cards.Add(cardCopy);
+        }
+
+        Do(InsertSheetEdit(Workbook.Sheets.IndexOf(sheet) + 1, copy));
+        return copy;
+    }
+
     /// <summary>Whether <see cref="RemoveSheet"/> may remove a sheet: never the workbook's only sheet.</summary>
     public bool CanRemoveSheet(Sheet sheet)
     {

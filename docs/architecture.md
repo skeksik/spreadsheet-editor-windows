@@ -40,8 +40,10 @@ typing ends back at the old text drops itself, so it leaves the document unmodif
 false and records nothing. Styles are immutable records: setting the fill (or No fill) or the text colour (or Automatic, spec §9.6)
 replaces `Entry.Style`. Pictures are added from file bytes (`PictureFactory`), removed, and reordered within an entry, by `EntryImage`
 identity. Sheet names follow `SheetNames` and must also avoid the worksheets the app does not show (`Workbook.SkippedSheetNames`,
-filled by the reader); an invalid name throws `SheetNameException` with the reason. Removing a sheet is an ordinary step (never the
-last sheet); moving one marks the document modified (§9.31). Picture width, height and pictures per row are clamped to their ranges
+filled by the reader); an invalid name throws `SheetNameException` with the reason. Duplicating a sheet inserts a deep copy after it with the
+current table name (§9.32) and without the aspect lock; its read cards and columns keep their source rows and positions, and its source
+is the original's marked `IsCopy`, so the writer copies the whole worksheet and writes the copy's table there (§9.30). Removing a sheet
+is an ordinary step (never the last sheet); moving one marks the document modified (§9.31). Picture width, height and pictures per row are clamped to their ranges
 (`PictureLimits`), and each change replaces the whole `ImageLayout`, so one undo restores all three. The aspect lock
 (`Sheet.LockedAspectRatio`, captured when it is turned on) is kept in memory per sheet: it is not undoable, does not mark the document
 modified and is never saved (whether to save it is open, spec §9.51). The modified flag compares the undo depth with the depth at
