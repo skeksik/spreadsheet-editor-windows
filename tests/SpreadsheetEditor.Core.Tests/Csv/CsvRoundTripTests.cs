@@ -35,6 +35,34 @@ public sealed class CsvRoundTripTests
         }
     }
 
+    /// <summary>Files without a line break after the last line, as Notepad saves them.</summary>
+    private static readonly string[] FilesWithoutFinalLineBreak =
+    [
+        "Name,Note\r\nAda,plain\r\nBo,\"has,comma\"",
+        "Name;Note\r\nAda;\"two\r\nlines\"",
+        "Name\tNote\r\nAda\tx",
+        "Name,Note",
+        "\"\"",
+    ];
+
+    [TestMethod]
+    public void ReadThenWriteKeepsAMissingFinalLineBreak()
+    {
+        foreach (var encoding in Enum.GetValues<CsvEncoding>())
+        {
+            foreach (var text in FilesWithoutFinalLineBreak)
+            {
+                var bytes = Encode(text, encoding);
+
+                var result = Read(bytes);
+                var written = Write(result.Workbook.Sheets[0], result.Format);
+
+                Assert.IsFalse(result.Format.FinalLineBreak, $"{encoding}: {text}");
+                CollectionAssert.AreEqual(bytes, written, $"{encoding}: {text}");
+            }
+        }
+    }
+
     [TestMethod]
     public void WriteThenReadGivesTheSameSheet()
     {

@@ -270,4 +270,15 @@ public sealed class CsvReaderTests
         Assert.AreEqual(longValue, sheet.Cards[0].Entries[0].Text);
         Assert.AreEqual("z", sheet.Cards[0].Entries[1].Text);
     }
+
+    [TestMethod]
+    [DataRow("a\r\n1\r\n", true)]
+    [DataRow("a\n1\n", true)]
+    [DataRow("a\r1\r", true)]
+    [DataRow("a\r\n1\r\n\r\n", true)]
+    [DataRow("a\r\n1", false)]
+    [DataRow("a", false)]
+    [DataRow("a\r\n\"1\r\n2\"", false)]
+    public void RecordsWhetherTheFileEndsWithALineBreak(string text, bool expected) =>
+        Assert.AreEqual(expected, Read(text).Format.FinalLineBreak);
 }

@@ -73,7 +73,7 @@ public static class CsvReader
             }
             var workbook = new Workbook();
             workbook.Sheets.Add(sheet);
-            return new CsvReadResult(workbook, new CsvFormat(CsvText.FromChar(separator), encoding));
+            return new CsvReadResult(workbook, new CsvFormat(CsvText.FromChar(separator), encoding, parser.EndsWithLineBreak));
         }
         catch (DecoderFallbackException e)
         {

@@ -551,6 +551,52 @@ public sealed partial class WorkbookEditorTests
         Assert.AreEqual(2, count);
     }
 
+    // Modified flag.
+
+    [TestMethod]
+    public void MarkModifiedMarksAnUneditedDocumentWithoutAnUndoStep()
+    {
+        var (editor, _) = Open(cards: 1);
+        var raised = 0;
+        editor.StateChanged += (_, _) => raised++;
+
+        editor.MarkModified();
+
+        Assert.IsTrue(editor.IsModified);
+        Assert.IsFalse(editor.CanUndo);
+        Assert.AreEqual(1, raised);
+    }
+
+    [TestMethod]
+    public void MarkModifiedIsClearedBySaveAndLoad()
+    {
+        var (editor, _) = Open(cards: 1);
+
+        editor.MarkModified();
+        editor.MarkSaved();
+        Assert.IsFalse(editor.IsModified);
+
+        editor.MarkModified();
+        editor.Load(new Workbook());
+        Assert.IsFalse(editor.IsModified);
+    }
+
+    [TestMethod]
+    public void MarkModifiedHoldsThroughAnUndoRedoRoundTrip()
+    {
+        var (editor, sheet) = Open(cards: 1);
+        editor.AddCard(sheet);
+        editor.MarkSaved();
+        editor.MarkModified();
+
+        editor.Undo();
+        editor.Redo();
+
+        Assert.IsTrue(editor.IsModified);
+        editor.MarkSaved();
+        Assert.IsFalse(editor.IsModified);
+    }
+
     // Helpers.
 
     /// <summary>An editor over a workbook with one sheet: the given column names (default a, b), each card's entries "r{card}{column letter}".</summary>

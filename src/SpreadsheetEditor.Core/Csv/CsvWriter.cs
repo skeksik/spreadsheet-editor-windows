@@ -1,4 +1,5 @@
 using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Xlsx;
 
 namespace SpreadsheetEditor.Core.Csv;
 
@@ -11,25 +12,86 @@ namespace SpreadsheetEditor.Core.Csv;
 /// card is empty writes no card line, so a header-only file is saved as it was read.</item>
 /// <item>A value is quoted only when it holds the separator, a quote or a line break, and a line holding one empty value is written as
 /// <c>""</c>, so that it is not read back as a blank line.</item>
-/// <item>CRLF after every line, the last one included; the format's encoding, with its byte order mark if it has one.</item>
+/// <item>CRLF between lines, and after the last one when <see cref="CsvFormat.FinalLineBreak"/> is set (as the read file had it, or
+/// always for a new file); the format's encoding, with its byte order mark if it has one.</item>
 /// </list>
 /// </summary>
 public static class CsvWriter
 {
-    /// <summary>Writes <paramref name="sheet"/> to the file at <paramref name="path"/>, replacing it.</summary>
+    /// <summary>Writes the file on the thread pool (docs/spec.md §9.53).</summary>
+    /// <inheritdoc cref="Write(Sheet, string, CsvFormat)"/>
+    public static Task WriteAsync(Sheet sheet, string path, CsvFormat format, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Write(sheet, path, format), cancellationToken);
+
+    /// <summary>
+    /// Writes <paramref name="sheet"/> to the file at <paramref name="path"/>, replacing it: into a temporary file in the target's folder,
+    /// which then replaces the target, as <see cref="Xlsx.XlsxWriter"/> does, so a failed write leaves the target as it was.
+    /// </summary>
+    /// <exception cref="SpreadsheetWriteException">
+    /// The file cannot be written (<see cref="SpreadsheetWriteError.AccessDenied"/>, <see cref="SpreadsheetWriteError.WriteFailed"/>), or a
+    /// value has a character the format's encoding cannot hold, such as a lone surrogate (<see cref="SpreadsheetWriteError.WriteFailed"/>).
+    /// </exception>
     public static void Write(Sheet sheet, string path, CsvFormat format)
     {
+        ArgumentNullException.ThrowIfNull(sheet);
         ArgumentException.ThrowIfNullOrEmpty(path);
-        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024);
-        Write(sheet, stream, format);
+        ArgumentNullException.ThrowIfNull(format);
+        string? temporary = null;
+        try
+        {
+            var full = Path.GetFullPath(path);
+            var folder = Path.GetDirectoryName(full) ?? ".";
+            temporary = Path.Combine(folder, $"{Path.GetFileName(full)}.{Guid.NewGuid():N}.tmp");
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024))
+            {
+                Write(sheet, stream, format);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporary, full, overwrite: true);
+            temporary = null;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new SpreadsheetWriteException(SpreadsheetWriteError.AccessDenied, $"The file cannot be written: {ex.Message}", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new SpreadsheetWriteException(SpreadsheetWriteError.WriteFailed, $"The file could not be written: {ex.Message}", ex);
+        }
+        finally
+        {
+            if (temporary is not null)
+            {
+                TryDelete(temporary);
+            }
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Left behind; the save has already failed with the error that matters.
+        }
     }
 
     /// <summary>Writes <paramref name="sheet"/> to <paramref name="stream"/>, which stays open.</summary>
+    /// <exception cref="SpreadsheetWriteException">
+    /// A name or value holds a lone surrogate, which no Unicode encoding can hold (<see cref="SpreadsheetWriteError.WriteFailed"/>); nothing
+    /// is written then.
+    /// </exception>
     public static void Write(Sheet sheet, Stream stream, CsvFormat format)
     {
         ArgumentNullException.ThrowIfNull(sheet);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(format);
+        // Checked before writing: a StreamWriter that meets such a character throws again when it is disposed, which hides the first error.
+        ThrowOnLoneSurrogate(sheet);
         var separator = CsvText.ToChar(format.Separator);
         stream.Write(CsvText.GetByteOrderMark(format.Encoding));
         using var writer = new StreamWriter(stream, CsvText.GetEncoding(format.Encoding), 64 * 1024, leaveOpen: true);
@@ -40,25 +102,63 @@ public static class CsvWriter
         }
         char[] needsQuotes = [separator, '"', '\r', '\n'];
         var values = new string[columnCount];
+        var lines = 0;
         if (sheet.HeaderRow is not null)
         {
             for (var i = 0; i < columnCount; i++)
             {
                 values[i] = sheet.Columns[i].Name;
             }
-            WriteLine(writer, values, separator, needsQuotes);
+            WriteLine(writer, values, separator, needsQuotes, lines++);
         }
-        if (sheet.Cards.Count == 1 && IsEmpty(sheet.Cards[0]))
+        if (sheet.Cards.Count != 1 || !IsEmpty(sheet.Cards[0]))
         {
-            return;
+            foreach (var card in sheet.Cards)
+            {
+                for (var i = 0; i < columnCount; i++)
+                {
+                    values[i] = i < card.Entries.Count ? card.Entries[i].Text : "";
+                }
+                WriteLine(writer, values, separator, needsQuotes, lines++);
+            }
+        }
+        if (lines > 0 && format.FinalLineBreak)
+        {
+            writer.Write("\r\n");
+        }
+    }
+
+    private static void ThrowOnLoneSurrogate(Sheet sheet)
+    {
+        if (sheet.HeaderRow is not null)
+        {
+            foreach (var column in sheet.Columns)
+            {
+                ThrowOnLoneSurrogate(column.Name);
+            }
         }
         foreach (var card in sheet.Cards)
         {
-            for (var i = 0; i < columnCount; i++)
+            foreach (var entry in card.Entries)
             {
-                values[i] = i < card.Entries.Count ? card.Entries[i].Text : "";
+                ThrowOnLoneSurrogate(entry.Text);
             }
-            WriteLine(writer, values, separator, needsQuotes);
+        }
+    }
+
+    private static void ThrowOnLoneSurrogate(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+            }
+            else if (char.IsSurrogate(text[i]))
+            {
+                throw new SpreadsheetWriteException(
+                    SpreadsheetWriteError.WriteFailed, $"A value has a character the file's encoding cannot hold (U+{(int)text[i]:X4}).");
+            }
         }
     }
 
@@ -74,8 +174,13 @@ public static class CsvWriter
         return true;
     }
 
-    private static void WriteLine(StreamWriter writer, string[] values, char separator, char[] needsQuotes)
+    // Writes one line, after the line break that ends the line before it; the last line's break is the caller's (FinalLineBreak).
+    private static void WriteLine(StreamWriter writer, string[] values, char separator, char[] needsQuotes, int index)
     {
+        if (index > 0)
+        {
+            writer.Write("\r\n");
+        }
         if (values.Length == 1 && values[0].Length == 0)
         {
             writer.Write("\"\"");
@@ -101,6 +206,5 @@ public static class CsvWriter
                 }
             }
         }
-        writer.Write("\r\n");
     }
 }

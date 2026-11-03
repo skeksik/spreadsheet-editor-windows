@@ -57,6 +57,18 @@ public sealed class WorkbookEditor
     }
 
     /// <summary>
+    /// Marks the document modified without an undo step: the file it was saved to no longer holds all of it. The app calls it after a
+    /// <c>.csv</c> save that wrote one sheet of several (docs/spec.md §9.34: "the document stays modified when it has other sheets that
+    /// were not written"), also when the document had no edits. Undo and redo keep it modified; <see cref="MarkSaved"/> and
+    /// <see cref="Load"/> clear it. Raises <see cref="StateChanged"/>.
+    /// </summary>
+    public void MarkModified()
+    {
+        history.MarkModified();
+        RaiseStateChanged();
+    }
+
+    /// <summary>
     /// Ends the current typing step. Consecutive edits of one entry's text, one entry's name or one table name are one undo step until
     /// another operation, an undo or redo, a save or this call; the app calls it when the field being typed in loses focus. A step whose
     /// typing ends back at the old text is dropped, and does not mark the document modified.

@@ -2,7 +2,8 @@ namespace SpreadsheetEditor.Core.Editing;
 
 /// <summary>
 /// The undo and redo stacks and the saved point. The document is unmodified exactly when the undo depth equals the depth at the last
-/// load or save; once a new edit drops the redo steps that led back to that point, it can no longer be reached.
+/// load or save and it was not marked modified since (<see cref="MarkModified"/>); once a new edit drops the redo steps that led back to
+/// that point, it can no longer be reached.
 /// </summary>
 internal sealed class UndoHistory
 {
@@ -13,11 +14,15 @@ internal sealed class UndoHistory
     private int savedDepth;
     private bool mergeOpen;
 
+    // Set when the file no longer matches the document for a reason outside the undo history (a .csv save that left sheets unwritten,
+    // docs/spec.md §9.34); cleared only by a save or a load, not by undo or redo.
+    private bool markedModified;
+
     public bool CanUndo => undo.Count > 0;
 
     public bool CanRedo => redo.Count > 0;
 
-    public bool IsModified => undo.Count != savedDepth;
+    public bool IsModified => markedModified || undo.Count != savedDepth;
 
     /// <summary>
     /// Records an edit that has just been applied: merges it into the last step while typing continues, drops the redo steps. A merged
@@ -81,8 +86,12 @@ internal sealed class UndoHistory
         return edit;
     }
 
+    /// <summary>Marks the document modified without an undo step, until the next <see cref="MarkSaved"/> or <see cref="Clear"/>.</summary>
+    public void MarkModified() => markedModified = true;
+
     public void MarkSaved()
     {
+        markedModified = false;
         savedDepth = undo.Count;
         mergeOpen = false;
     }
@@ -93,5 +102,6 @@ internal sealed class UndoHistory
         redo.Clear();
         savedDepth = 0;
         mergeOpen = false;
+        markedModified = false;
     }
 }

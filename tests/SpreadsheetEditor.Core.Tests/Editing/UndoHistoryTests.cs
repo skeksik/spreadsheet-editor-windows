@@ -48,6 +48,39 @@ public sealed class UndoHistoryTests
     }
 
     [TestMethod]
+    public void MarkModifiedHoldsUntilSavedOrCleared()
+    {
+        var history = new UndoHistory();
+
+        history.MarkModified();
+        Assert.IsTrue(history.IsModified);
+        history.MarkSaved();
+        Assert.IsFalse(history.IsModified);
+
+        history.MarkModified();
+        history.Clear();
+        Assert.IsFalse(history.IsModified);
+    }
+
+    [TestMethod]
+    public void MarkModifiedSurvivesUndoAndRedoToTheSavedPoint()
+    {
+        var history = new UndoHistory();
+        history.Record(new TestEdit());
+        history.MarkSaved();
+        history.MarkModified();
+
+        history.PopUndo();
+        Assert.IsTrue(history.IsModified);
+        history.PopRedo();
+        Assert.IsTrue(history.IsModified, "back at the saved depth, but the file still lacks part of the document");
+        Assert.IsTrue(history.CanUndo, "no undo step was added or removed");
+
+        history.MarkSaved();
+        Assert.IsFalse(history.IsModified);
+    }
+
+    [TestMethod]
     public void ModifiedFollowsTheSavedPoint()
     {
         var history = new UndoHistory();

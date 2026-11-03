@@ -1,6 +1,7 @@
 using System.Text;
 using SpreadsheetEditor.Core.Csv;
 using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Xlsx;
 using static SpreadsheetEditor.Core.Tests.Csv.CsvTestFiles;
 
 namespace SpreadsheetEditor.Core.Tests.Csv;
@@ -149,6 +150,120 @@ public sealed class CsvWriterTests
             CsvWriter.Write(MakeSheet("a|b¶1|2"), path, new CsvFormat(CsvSeparator.Semicolon, CsvEncoding.Utf8WithBom));
 
             CollectionAssert.AreEqual(Encode("a;b\r\n1;2\r\n", CsvEncoding.Utf8WithBom), File.ReadAllBytes(path));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void EndsTheLastLineAsTheFormatSays()
+    {
+        var withBreak = new CsvFormat(CsvSeparator.Comma, CsvEncoding.Utf8);
+        var withoutBreak = withBreak with { FinalLineBreak = false };
+
+        Assert.IsTrue(CsvFormat.Default.FinalLineBreak);
+        Assert.AreEqual("a,b\r\n1,2\r\n", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶1|2"), withBreak)));
+        Assert.AreEqual("a,b\r\n1,2", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶1|2"), withoutBreak)));
+        Assert.AreEqual("a,b", Encoding.UTF8.GetString(Write(MakeSheet("a|b¶|"), withoutBreak)));
+    }
+
+    [TestMethod]
+    public void WritingAFileLeavesNoTemporaryFile()
+    {
+        var folder = Directory.CreateTempSubdirectory("csv-tests-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "out.csv");
+
+            CsvWriter.Write(MakeSheet("a¶1"), path, CsvFormat.Default);
+
+            Assert.AreEqual("out.csv", folder.GetFiles().Single().Name);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void AFailedWriteLeavesTheTargetUnchanged()
+    {
+        var folder = Directory.CreateTempSubdirectory("csv-tests-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "out.csv");
+            File.WriteAllText(path, "a\r\nold\r\n");
+            var original = File.ReadAllBytes(path);
+            var sheet = MakeSheet("a¶x");
+            sheet.Cards[0].Entries[0].Text = "lone \uD800 surrogate";
+
+            var error = Assert.ThrowsExactly<SpreadsheetWriteException>(() => CsvWriter.Write(sheet, path, CsvFormat.Default));
+
+            Assert.AreEqual(SpreadsheetWriteError.WriteFailed, error.Reason);
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
+            Assert.AreEqual(1, folder.GetFiles().Length);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    // Built in code: an attribute stores its strings as UTF-8, which turns a lone surrogate into U+FFFD.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    public void ALoneSurrogateIsAWriteErrorAndWritesNothing(int index)
+    {
+        var text = new[] { "lone \uD800 high", "lone \uDC00 low", "ends high \uD83D" }[index];
+        var sheet = MakeSheet("a¶x");
+        sheet.Cards[0].Entries[0].Text = text;
+        using var stream = new MemoryStream();
+
+        var error = Assert.ThrowsExactly<SpreadsheetWriteException>(() => CsvWriter.Write(sheet, stream, CsvFormat.Default));
+
+        Assert.AreEqual(SpreadsheetWriteError.WriteFailed, error.Reason);
+        Assert.AreEqual(0, stream.Length);
+    }
+
+    [TestMethod]
+    public void WritesAPairedSurrogate()
+    {
+        Assert.AreEqual("a\r\n\U0001F33F\r\n", WriteText(MakeSheet("a¶\U0001F33F")));
+    }
+
+    [TestMethod]
+    public void AMissingFolderIsAWriteError()
+    {
+        var folder = Directory.CreateTempSubdirectory("csv-tests-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "missing", "out.csv");
+
+            var error = Assert.ThrowsExactly<SpreadsheetWriteException>(() => CsvWriter.Write(MakeSheet("a¶1"), path, CsvFormat.Default));
+
+            Assert.AreEqual(SpreadsheetWriteError.WriteFailed, error.Reason);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task WriteAsyncWritesTheFile()
+    {
+        var folder = Directory.CreateTempSubdirectory("csv-tests-");
+        try
+        {
+            var path = Path.Combine(folder.FullName, "out.csv");
+
+            await CsvWriter.WriteAsync(MakeSheet("a¶1"), path, CsvFormat.Default);
+
+            Assert.AreEqual("a\r\n1\r\n", File.ReadAllText(path));
         }
         finally
         {
