@@ -1,4 +1,3 @@
-using System.Text;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Xlsx;
 
@@ -59,11 +58,6 @@ public static class CsvWriter
         {
             throw new SpreadsheetWriteException(SpreadsheetWriteError.WriteFailed, $"The file could not be written: {ex.Message}", ex);
         }
-        catch (EncoderFallbackException ex)
-        {
-            throw new SpreadsheetWriteException(
-                SpreadsheetWriteError.WriteFailed, $"A value has a character the file's encoding cannot hold: {ex.Message}", ex);
-        }
         finally
         {
             if (temporary is not null)
@@ -86,11 +80,17 @@ public static class CsvWriter
     }
 
     /// <summary>Writes <paramref name="sheet"/> to <paramref name="stream"/>, which stays open.</summary>
+    /// <exception cref="SpreadsheetWriteException">
+    /// A name or value holds a lone surrogate, which no Unicode encoding can hold (<see cref="SpreadsheetWriteError.WriteFailed"/>); nothing
+    /// is written then.
+    /// </exception>
     public static void Write(Sheet sheet, Stream stream, CsvFormat format)
     {
         ArgumentNullException.ThrowIfNull(sheet);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(format);
+        // Checked before writing: a StreamWriter that meets such a character throws again when it is disposed, which hides the first error.
+        ThrowOnLoneSurrogate(sheet);
         var separator = CsvText.ToChar(format.Separator);
         stream.Write(CsvText.GetByteOrderMark(format.Encoding));
         using var writer = new StreamWriter(stream, CsvText.GetEncoding(format.Encoding), 64 * 1024, leaveOpen: true);
@@ -120,6 +120,40 @@ public static class CsvWriter
                 values[i] = i < card.Entries.Count ? card.Entries[i].Text : "";
             }
             WriteLine(writer, values, separator, needsQuotes);
+        }
+    }
+
+    private static void ThrowOnLoneSurrogate(Sheet sheet)
+    {
+        if (sheet.HeaderRow is not null)
+        {
+            foreach (var column in sheet.Columns)
+            {
+                ThrowOnLoneSurrogate(column.Name);
+            }
+        }
+        foreach (var card in sheet.Cards)
+        {
+            foreach (var entry in card.Entries)
+            {
+                ThrowOnLoneSurrogate(entry.Text);
+            }
+        }
+    }
+
+    private static void ThrowOnLoneSurrogate(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+            }
+            else if (char.IsSurrogate(text[i]))
+            {
+                throw new SpreadsheetWriteException(
+                    SpreadsheetWriteError.WriteFailed, $"A value has a character the file's encoding cannot hold (U+{(int)text[i]:X4}).");
+            }
         }
     }
 

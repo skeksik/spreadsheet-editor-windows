@@ -199,6 +199,30 @@ public sealed class CsvWriterTests
         }
     }
 
+    // Built in code: an attribute stores its strings as UTF-8, which turns a lone surrogate into U+FFFD.
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    public void ALoneSurrogateIsAWriteErrorAndWritesNothing(int index)
+    {
+        var text = new[] { "lone \uD800 high", "lone \uDC00 low", "ends high \uD83D" }[index];
+        var sheet = MakeSheet("a¶x");
+        sheet.Cards[0].Entries[0].Text = text;
+        using var stream = new MemoryStream();
+
+        var error = Assert.ThrowsExactly<SpreadsheetWriteException>(() => CsvWriter.Write(sheet, stream, CsvFormat.Default));
+
+        Assert.AreEqual(SpreadsheetWriteError.WriteFailed, error.Reason);
+        Assert.AreEqual(0, stream.Length);
+    }
+
+    [TestMethod]
+    public void WritesAPairedSurrogate()
+    {
+        Assert.AreEqual("a\r\n\U0001F33F\r\n", WriteText(MakeSheet("a¶\U0001F33F")));
+    }
+
     [TestMethod]
     public void AMissingFolderIsAWriteError()
     {
