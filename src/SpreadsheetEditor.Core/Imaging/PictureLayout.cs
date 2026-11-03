@@ -17,7 +17,7 @@ public static class PictureLayout
     /// <summary>Points per pixel at 96 dpi, as row heights are written (§5.3 step 5).</summary>
     public const double PointsPerPixel = 0.75;
 
-    /// <summary>The sheet-wide layout: pictures per row after the cap, picture rows per worksheet row, and each column's capacity.</summary>
+    /// <summary>The sheet-wide layout: pictures per row after the cap, picture rows per worksheet row, each column's capacity.</summary>
     public static SheetPictureLayout ForSheet(Sheet sheet)
     {
         ArgumentNullException.ThrowIfNull(sheet);
