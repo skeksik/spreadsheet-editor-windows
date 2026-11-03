@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace SpreadsheetEditor.Core.Xlsx;
@@ -16,14 +18,14 @@ internal sealed class WorksheetCells
 {
     private readonly string[] sharedStrings;
     private readonly NumberFormatTable formats;
-    private readonly bool date1904;
+    private readonly DateSystem system;
     private readonly CultureInfo culture;
 
-    public WorksheetCells(string[] sharedStrings, NumberFormatTable formats, bool date1904, CultureInfo culture)
+    public WorksheetCells(string[] sharedStrings, NumberFormatTable formats, DateSystem system, CultureInfo culture)
     {
         this.sharedStrings = sharedStrings;
         this.formats = formats;
-        this.date1904 = date1904;
+        this.system = system;
         this.culture = culture;
     }
 
@@ -129,8 +131,8 @@ internal sealed class WorksheetCells
             _ => null,
         };
         var formatId = formats.FormatId(pending.Style);
-        var value = XlsxCellValues.Create(
-            pending.Type, pending.Raw, text, pending.Formula, formatId, formats.FormatCode(formatId), date1904, culture);
+        var format = new NumberFormat(formatId, formats.FormatCode(formatId));
+        var value = XlsxCellValues.Create(pending.Type, pending.Raw, text, pending.Formula, format, system, culture);
         if (value is not null)
         {
             grid.Add(new ReadCell(pending.Row, pending.Column, value, text, pending.Formula));

@@ -1,6 +1,7 @@
 using System.Globalization;
 using DocumentFormat.OpenXml.Packaging;
 using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Values;
 using X = DocumentFormat.OpenXml.Spreadsheet;
 
 namespace SpreadsheetEditor.Core.Xlsx;
@@ -119,10 +120,10 @@ public static class XlsxReader
             ?? throw new InvalidDataException("The package has no workbook part.");
         var root = workbookPart.Workbook
             ?? throw new InvalidDataException("The workbook part is empty.");
-        var date1904 = root.WorkbookProperties?.Date1904?.Value ?? false;
+        var system = root.WorkbookProperties?.Date1904?.Value == true ? DateSystem.Date1904 : DateSystem.Date1900;
         var formats = NumberFormatTable.Read(workbookPart.WorkbookStylesPart?.Stylesheet);
         var sharedStrings = SharedStrings.Read(workbookPart.SharedStringTablePart, cancellationToken);
-        var cells = new WorksheetCells(sharedStrings, formats, date1904, culture);
+        var cells = new WorksheetCells(sharedStrings, formats, system, culture);
 
         var sheets = new List<Sheet>();
         foreach (var entry in root.Sheets?.Elements<X.Sheet>() ?? [])

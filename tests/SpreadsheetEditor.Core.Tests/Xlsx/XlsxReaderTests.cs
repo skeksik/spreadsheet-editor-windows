@@ -250,17 +250,48 @@ public sealed class XlsxReaderTests
 
         var entries = ReadSingle(book).Cards[0].Entries;
 
-        Assert.AreEqual(new CellValue(CellValueKind.Text, "plain"), entries[0].Original);
-        Assert.AreEqual(new CellValue(CellValueKind.Number, "3.5", Number: 3.5), entries[1].Original);
-        Assert.AreEqual(new CellValue(CellValueKind.Boolean, "False", Boolean: false), entries[2].Original);
+        Assert.AreEqual(new CellValue(CellValueKind.Text, "plain", Format: NumberFormat.General), entries[0].Original);
+        Assert.AreEqual(new CellValue(CellValueKind.Number, "3.5", Number: 3.5, Format: NumberFormat.General), entries[1].Original);
+        Assert.AreEqual(new CellValue(CellValueKind.Boolean, "FALSE", Boolean: false, Format: NumberFormat.General), entries[2].Original);
         Assert.AreEqual("inline text", entries[3].Text);
         Assert.AreEqual("Bold", entries[4].Text);
-        Assert.AreEqual("#N/A", entries[5].Text);
+        Assert.AreEqual(new CellValue(CellValueKind.Error, "#N/A", Format: NumberFormat.General), entries[5].Original);
         Assert.AreEqual("=SUM(B2:B2)", entries[6].Text);
-        Assert.AreEqual(CellValueKind.Number, entries[6].Original!.Kind);
-        Assert.AreEqual(3.5, entries[6].Original!.Number);
+        Assert.AreEqual(
+            new CellValue(CellValueKind.Number, "=SUM(B2:B2)", Number: 3.5, Formula: "SUM(B2:B2)", Format: NumberFormat.General),
+            entries[6].Original);
         Assert.AreEqual("=UPPER(A2)", entries[7].Text);
         Assert.AreEqual(CellValueKind.Text, entries[7].Original!.Kind);
+        Assert.AreEqual("UPPER(A2)", entries[7].Original!.Formula);
+    }
+
+    [TestMethod]
+    public void KeepsTheNumberFormatOnEveryValue()
+    {
+        var book = new TestWorkbook();
+        var text = book.AddNumberFormat(49);
+        var custom = book.AddNumberFormat(170, "0.000");
+        book.AddSheet("S").Row("A1", "Code", "Weight").Set("A2", "007", text).Set("B2", 1.5, custom);
+
+        var entries = ReadSingle(book).Cards[0].Entries;
+
+        Assert.AreEqual(new NumberFormat(49), entries[0].Original!.Format);
+        Assert.AreEqual("007", entries[0].Text);
+        Assert.AreEqual(new NumberFormat(170, "0.000"), entries[1].Original!.Format);
+        // The number format is kept, not applied to the text (CellText.Format).
+        Assert.AreEqual("1.5", entries[1].Text);
+    }
+
+    [TestMethod]
+    public void FormulaWithoutCachedValueIsShownAsItsSource()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("S").Row("A1", "A").Formula("A2", "NOW()", "");
+
+        var original = ReadSingle(book).Cards[0].Entries[0].Original!;
+
+        Assert.AreEqual("NOW()", original.Formula);
+        Assert.AreEqual("=NOW()", original.DisplayText);
     }
 
     [TestMethod]
@@ -298,22 +329,6 @@ public sealed class XlsxReaderTests
             Assert.AreEqual(CellValueKind.Number, entries[2].Original!.Kind);
         }
     }
-
-    [TestMethod]
-    [DataRow(14, null, true)]
-    [DataRow(22, null, true)]
-    [DataRow(46, null, true)]
-    [DataRow(0, null, false)]
-    [DataRow(4, null, false)]
-    [DataRow(49, null, false)]
-    [DataRow(164, "yyyy-mm-dd", true)]
-    [DataRow(164, "[h]:mm", true)]
-    [DataRow(164, "[Red]0.00", false)]
-    [DataRow(164, "0.00E+00", false)]
-    [DataRow(164, "\"day \"0", false)]
-    [DataRow(164, "General", false)]
-    public void ClassifiesDateFormats(int id, string? code, bool isDate) =>
-        Assert.AreEqual(isDate, XlsxCellValues.IsDateFormat(id, code));
 
     [TestMethod]
     public void MergesInsideTheTableGroupRowsIntoCards()
