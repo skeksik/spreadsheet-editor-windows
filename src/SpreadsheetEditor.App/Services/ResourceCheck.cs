@@ -99,6 +99,14 @@ internal static class ResourceCheck
             byte[] bytes = File.ReadAllBytes(pri);
             return $"{Path.GetFileName(pri)}: {bytes.Length} bytes, Cyrillic UTF-16 {HasCyrillicUtf16(bytes)}, UTF-8 {HasCyrillicUtf8(bytes)}";
         })));
+        // The Russian MainWindow_EmptyTitle.Text from Strings/ru-RU, to tell our own Russian strings from WinUI's (merged into the app PRI).
+        const string Probe = "Таблица не открыта";
+        Line("app PRI holds our Russian text", () => string.Join("; ", Directory.EnumerateFiles(AppContext.BaseDirectory, "*.pri").Select(pri =>
+        {
+            byte[] bytes = File.ReadAllBytes(pri);
+            return $"{Path.GetFileName(pri)}: UTF-16 {Contains(bytes, System.Text.Encoding.Unicode.GetBytes(Probe))}, " +
+                $"UTF-8 {Contains(bytes, System.Text.Encoding.UTF8.GetBytes(Probe))}";
+        })));
         Line("ru context QualifierValues", () => Dump(Context(manager, UiLanguage.Russian).QualifierValues));
         Line("default context QualifierValues", () => Dump(manager.CreateResourceContext().QualifierValues));
         if (strings is null || name is null)
@@ -122,6 +130,8 @@ internal static class ResourceCheck
 
     private static string? Dump(IDictionary<string, string>? values) =>
         values is null ? null : string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value ?? "<null>"}"));
+
+    private static bool Contains(byte[] bytes, byte[] part) => bytes.AsSpan().IndexOf(part) >= 0;
 
     // Two or more Cyrillic letters (U+0410-U+044F) in a row, little-endian UTF-16.
     private static bool HasCyrillicUtf16(byte[] bytes)
