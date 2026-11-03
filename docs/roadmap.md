@@ -16,7 +16,8 @@ references are to `docs/spec.md`.
       `IsWide`; the centre-crop source rectangle in 1/100000 units (spec §5.4). Core only, with tests.
 - [ ] `feat/picture-layout`: the cell layout of a value's pictures: units, per-column capacity, the 1762 px cap, the placement loop
       that also counts picture rows, picture rows per worksheet row from the height (spec §5.3–5.4, §9 items 25–26), worksheet
-      rows needed, row heights, column widths and the px↔width formulas. Pure functions over the model, with tests. Depends on `feat/picture-facts`.
+      rows needed, row heights, column widths and the px↔width formulas. Pure functions over the model, with tests. Depends on
+      `feat/picture-facts`.
 - [ ] `feat/xlsx-read`: open an `.xlsx` with the Open XML SDK and build the model: table detection with metadata cells ignored
       and the hidden-header test (§4.1, §9.1, §9.9), values with their types, dates and formulas (§4.2, §9.2–9.3), merged-row
       grouping by table merges only (§4.3, §9.7), theme and indexed colours with tint and automatic text colour (§4.4, §9.5–9.6),
