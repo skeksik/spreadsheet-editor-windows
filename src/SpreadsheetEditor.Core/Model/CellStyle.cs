@@ -10,6 +10,12 @@ public sealed record CellStyle
 
     public RgbColor? TextColor { get; init; }
 
+    /// <summary>
+    /// True when the text colour is automatic: the font has no colour, or one marked automatic (docs/spec.md §9.6). <see cref="TextColor"/>
+    /// is then null.
+    /// </summary>
+    public bool AutomaticTextColor { get; init; }
+
     /// <summary>Excel's horizontal alignment name (left, center, right, ...), or null.</summary>
     public string? HorizontalAlignment { get; init; }
 
