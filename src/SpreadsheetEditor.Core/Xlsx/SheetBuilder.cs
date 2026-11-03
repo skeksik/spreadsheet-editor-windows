@@ -68,7 +68,7 @@ internal static class SheetBuilder
             sheet.Cards.Add(card);
         }
 
-        sheet.Source = new SheetSource(relationshipId, sheetId, table.FirstRow, lastRow, table.FirstColumn, table.LastColumn);
+        sheet.Source = new SheetSource(relationshipId, sheetId, table.FirstRow, lastRow, table.FirstColumn, table.LastColumn) { SharedFormulas = grid.SharedFormulas };
         return sheet;
     }
 

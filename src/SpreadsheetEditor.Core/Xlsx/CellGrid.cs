@@ -14,6 +14,9 @@ internal sealed class CellGrid
 
     public List<MergeRange> Merges { get; } = [];
 
+    /// <summary>The worksheet's shared formula groups and the cells in them.</summary>
+    public SharedFormulaMap SharedFormulas { get; } = new();
+
     public int Count => cells.Count;
 
     public IEnumerable<ReadCell> Cells => cells.Values;
