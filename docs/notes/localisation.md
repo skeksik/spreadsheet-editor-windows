@@ -12,8 +12,7 @@ How the app picks its interface language, where its strings live, and how to add
   them. `Window.Title` is set in code because `Window` is not a `DependencyObject`, so `x:Uid` cannot reach it (not verified).
 - **Never translated:** the product name `Spreadsheet Editor` (`AppDisplayName`, `WindowTitleWithFile`, §7.2), and the language names
   `English` and `Русский`, which are shown in their own language (`LanguageName_English`, `LanguageName_Russian`, §10.9). These keys
-  have the same text in both files and are listed in `Services/ResourceCheck.Untranslated`. A new string that is meant to read the same
-  in both languages goes on that list too, e.g. `Excel (*.xlsx)`.
+  have the same text in both files.
 - **Window title:** `Spreadsheet Editor` with no document open. With a document open it is `{file} - Spreadsheet Editor`
   (`WindowTitleWithFile`, §10.8); feat/app-document sets it.
 - **Standard dialog buttons** come from the system when the dialogs are native (§10.10). A `ContentDialog`'s button texts are still
@@ -74,13 +73,20 @@ A JSON file was chosen over `Microsoft.Windows.Storage.ApplicationData.GetForUnp
 page (read 2026-11-03) covers only Windows App SDK 2.0 and does not say where it stores the data.
 
 ## Smoke check
-`build.ps1 -Smoke` (and so CI) starts the app with `--smoke`. Before the window opens, `Services/ResourceCheck` resolves every string in
-the PRI file twice, through MRT Core's `ResourceManager`, with a `ResourceContext` whose `Language` is `en-US` and then `ru-RU`. A missing
-or empty text fails the run, and so does a Russian text equal to the English one unless the key is on the untranslated list: MRT falls
-back to the default language, so that equality means a missing Russian string. A failure writes the keys to the smoke log, and the app
-exits with 1.
+`build.ps1 -Smoke` (and so CI) checks the strings as the user sees them:
+- Every key is in both `Strings/en-US` and `Strings/ru-RU`.
+- The app runs twice, with `--smoke --smoke-language en` and `--smoke --smoke-language ru`. `App` passes that language to
+  `LanguageService.Start` in place of the stored one, so it is applied the same way, through `PrimaryLanguageOverride` before any
+  resource loads, and it is not saved.
+- After the first frame, the window writes the texts it shows (`MainWindow.ShownTexts`: the title, and what `x:Uid` set on the menu and
+  the empty state) to `%TEMP%\SpreadsheetEditor-smoke-texts.txt`. `build.ps1` compares each with the value in that language's
+  `Resources.resw`.
+- A new view adds its texts to its own `ShownTexts`.
 
-The check does not show that the live interface switches language. That is the local check below.
+A lookup through `ResourceManager` with a `ResourceContext` whose `Language` qualifier is `ru-RU` was tried first and dropped. A makepri
+dump of the published PRI on CI (2026-11-03) showed the `ru-RU` candidates indexed, yet that lookup returned the `en-US` ones: the
+context did not override the process language, which `PrimaryLanguageOverride` had set to `en-US` (why: not verified). The end-to-end
+run tests what the user gets instead.
 
 ## Local check (owner, on Windows)
 1. Windows display language English, no `%LOCALAPPDATA%\SpreadsheetEditor\settings.json`: start the app. The menu shows `File` › `Exit`,

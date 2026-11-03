@@ -49,10 +49,12 @@ internal sealed class LanguageService
     /// GetUserDefaultUILanguage function to set the current UI culture. GetUserDefaultUILanguage returns the default UI culture set by
     /// the user."
     /// </remarks>
-    public static LanguageService Start(SettingsStore settings)
+    /// <param name="settings">The stored settings, whose choice applies.</param>
+    /// <param name="runPreference">A choice for this run only, in place of the stored one (the smoke run's language); not saved.</param>
+    public static LanguageService Start(SettingsStore settings, LanguagePreference? runPreference = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        LanguagePreference preference = UiLanguage.ParsePreference(settings.Current.Language);
+        LanguagePreference preference = runPreference ?? UiLanguage.ParsePreference(settings.Current.Language);
         string tag = UiLanguage.Resolve(preference, WindowsLanguage);
         ApplicationLanguages.PrimaryLanguageOverride = tag;
         CultureInfo culture = CultureInfo.GetCultureInfo(tag);

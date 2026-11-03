@@ -35,5 +35,18 @@ public sealed partial class MainWindow : Window
         FirstRendered?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// The texts the window shows, by their resource key (App.SmokeTextsPath): what x:Uid and Services.Strings set, so the smoke run checks
+    /// the language the user sees.
+    /// </summary>
+    internal IEnumerable<KeyValuePair<string, string>> ShownTexts()
+    {
+        yield return new("AppDisplayName", Title);
+        yield return new("MainWindow_FileMenu.Title", FileMenu.Title);
+        yield return new("MainWindow_ExitItem.Text", ExitItem.Text);
+        yield return new("MainWindow_EmptyTitle.Text", EmptyTitle.Text);
+        yield return new("MainWindow_EmptyHint.Text", EmptyHint.Text);
+    }
+
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
 }

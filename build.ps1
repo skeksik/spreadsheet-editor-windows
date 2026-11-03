@@ -24,43 +24,47 @@ if (-not (Get-ChildItem $out -File | Where-Object Name -in 'SpreadsheetEditor.pr
 Write-Host "Published to $out"
 
 if ($Smoke) {
+    # Every string is in both languages (docs/notes/localisation.md).
+    $strings = Join-Path $PSScriptRoot 'src/SpreadsheetEditor.App/Strings'
+    function Read-Strings([string]$language) {
+        $table = @{}
+        ([xml](Get-Content -Raw -Encoding utf8 (Join-Path $strings "$language/Resources.resw"))).root.data | ForEach-Object { $table[$_.name] = $_.value }
+        $table
+    }
+    $english = Read-Strings 'en-US'
+    $russian = Read-Strings 'ru-RU'
+    $missing = @($english.Keys | Where-Object { -not $russian.ContainsKey($_) }) + @($russian.Keys | Where-Object { -not $english.ContainsKey($_) })
+    if ($missing) { throw "strings: not in both Strings/en-US and Strings/ru-RU: $($missing -join ', ')" }
+
     $exe = Join-Path $out 'SpreadsheetEditor.exe'
-    $started = Get-Date
     $log = Join-Path ([IO.Path]::GetTempPath()) 'SpreadsheetEditor-smoke.log'
-    Remove-Item $log -ErrorAction SilentlyContinue
-    $process = Start-Process $exe -ArgumentList '--smoke' -PassThru
-    if (-not $process.WaitForExit(60000)) {
-        $process.Kill()
-        throw 'smoke run: the app did not exit within 60 s'
-    }
-    if ($process.ExitCode -ne 0) {
-        if (Test-Path $log) { Get-Content $log | Write-Host }
-        # Temporary (feat/app-localisation): which .resw files the PRI build indexed, and the app PRI's candidates for one string.
-        $obj = Join-Path $PSScriptRoot 'src/SpreadsheetEditor.App/obj'
-        Get-ChildItem $obj -Recurse -File -Include 'resources.resfiles', 'priconfig.xml', 'pri.resfiles' -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName | Write-Host }
-        $packages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $HOME '.nuget/packages' }
-        $makepri = Get-ChildItem (Join-Path $packages 'microsoft.windows.sdk.buildtools') -Recurse -Filter 'makepri.exe' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Directory.Name -eq 'x64' } | Select-Object -First 1
-        try {
-            if ($makepri) {
-                $dump = Join-Path ([IO.Path]::GetTempPath()) 'SpreadsheetEditor-pri.xml'
-                & $makepri.FullName dump /if (Join-Path $out 'SpreadsheetEditor.pri') /of $dump /dt detailed /o | Out-Null
-                if (Test-Path $dump) {
-                    Write-Host '--- makepri dump: MainWindow_EmptyTitle'
-                    Select-String -Path $dump -Pattern 'MainWindow_EmptyTitle' -Context 0, 16 | ForEach-Object { $_.ToString() } | Write-Host
-                    Write-Host '--- makepri dump: qualifiers'
-                    Select-String -Path $dump -Pattern '<Qualifier ' | Select-Object -First 40 | ForEach-Object { $_.Line.Trim() } | Write-Host
-                }
-            }
-            else { Write-Host 'makepri.exe not found in the NuGet cache' }
+    $texts = Join-Path ([IO.Path]::GetTempPath()) 'SpreadsheetEditor-smoke-texts.txt'
+    # One run per interface language: the window must open, render, show its strings in that language and exit with 0.
+    foreach ($run in @(@{ Language = 'en'; Strings = $english }, @{ Language = 'ru'; Strings = $russian })) {
+        $started = Get-Date
+        Remove-Item $log, $texts -ErrorAction SilentlyContinue
+        $process = Start-Process $exe -ArgumentList '--smoke', '--smoke-language', $run.Language -PassThru
+        if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw "smoke run ($($run.Language)): the app did not exit within 60 s"
         }
-        catch { Write-Host "makepri dump failed: $_" }
-        # A crash leaves its exception in the Application event log (".NET Runtime" and "Application Error" entries).
-        Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $started } -ErrorAction SilentlyContinue |
-            Where-Object ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' |
-            Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 300 | Write-Host
-        throw "smoke run: exit code $($process.ExitCode) (0x$('{0:X8}' -f $process.ExitCode))"
+        if ($process.ExitCode -ne 0) {
+            if (Test-Path $log) { Get-Content $log | Write-Host }
+            # A crash leaves its exception in the Application event log (".NET Runtime" and "Application Error" entries).
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $started } -ErrorAction SilentlyContinue |
+                Where-Object ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' |
+                Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 300 | Write-Host
+            throw "smoke run ($($run.Language)): exit code $($process.ExitCode) (0x$('{0:X8}' -f $process.ExitCode))"
+        }
+        # The texts the window showed, one "key<TAB>text" line per string (App.SmokeTextsPath), against the resource file.
+        if (-not (Test-Path $texts)) { throw "smoke run ($($run.Language)): the app wrote no texts to $texts" }
+        $shown = Get-Content -Encoding utf8 $texts
+        if (-not $shown) { throw "smoke run ($($run.Language)): the app wrote no texts" }
+        $wrong = foreach ($line in $shown) {
+            $key, $text = $line -split "`t", 2
+            if ($text -cne $run.Strings[$key]) { "$key shows '$text', expected '$($run.Strings[$key])'" }
+        }
+        if ($wrong) { throw "smoke run ($($run.Language)): $($wrong -join '; ')" }
+        Write-Host "Smoke run passed ($($run.Language)): $($shown.Count) strings shown as in Strings/$(if ($run.Language -eq 'ru') { 'ru-RU' } else { 'en-US' })"
     }
-    Write-Host 'Smoke run passed'
 }

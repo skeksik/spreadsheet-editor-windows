@@ -22,8 +22,8 @@
 
         <!-- The File menu grows with docs/roadmap.md (open, save, save as, recent files). -->
         <MenuBar Grid.Row="1">
-            <MenuBarItem x:Uid="MainWindow_FileMenu">
-                <MenuFlyoutItem x:Uid="MainWindow_ExitItem" Click="OnExitClick" />
+            <MenuBarItem x:Name="FileMenu" x:Uid="MainWindow_FileMenu">
+                <MenuFlyoutItem x:Name="ExitItem" x:Uid="MainWindow_ExitItem" Click="OnExitClick" />
             </MenuBarItem>
         </MenuBar>
 
@@ -35,8 +35,9 @@
             VerticalAlignment="Center"
             Spacing="8">
             <FontIcon HorizontalAlignment="Center" FontSize="48" Glyph="&#xE9F9;" />
-            <TextBlock x:Uid="MainWindow_EmptyTitle" HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="EmptyTitle" x:Uid="MainWindow_EmptyTitle" HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock
+                x:Name="EmptyHint"
                 x:Uid="MainWindow_EmptyHint"
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
