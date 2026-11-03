@@ -184,8 +184,12 @@
     <comment>Error explanation: the file or folder does not exist.</comment>
   </data>
   <data name="FileProblem_AccessDenied" xml:space="preserve">
-    <value>Windows doesn't allow access to this file. Check that the file isn't read-only and that you have permission to use it.</value>
-    <comment>Error explanation: no permission, or a read-only file.</comment>
+    <value>Windows doesn't allow access to this file. It may be read-only or open in another program, or you may not have permission to use it.</value>
+    <comment>Error explanation: no permission, a read-only file, or (when Windows reports it so) a file another program has open.</comment>
+  </data>
+  <data name="FileProblem_InUse" xml:space="preserve">
+    <value>The file is open in another program. Close it there and try again.</value>
+    <comment>Error explanation: another program has the file open and does not share it.</comment>
   </data>
   <data name="FileProblem_ReadFailed" xml:space="preserve">
     <value>The file couldn't be read. Another program may be using it: close it there and try again.</value>

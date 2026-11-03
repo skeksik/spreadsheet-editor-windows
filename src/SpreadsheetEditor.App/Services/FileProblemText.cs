@@ -9,6 +9,7 @@ internal static class FileProblemText
     {
         FileProblem.NotFound => "FileProblem_NotFound",
         FileProblem.AccessDenied => "FileProblem_AccessDenied",
+        FileProblem.InUse => "FileProblem_InUse",
         FileProblem.ReadFailed => "FileProblem_ReadFailed",
         FileProblem.WriteFailed => "FileProblem_WriteFailed",
         FileProblem.NotAWorkbook => "FileProblem_NotAWorkbook",

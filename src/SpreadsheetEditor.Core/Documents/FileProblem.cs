@@ -15,6 +15,9 @@ public enum FileProblem
     /// <summary>Windows does not allow the file to be opened or written (permissions, a read-only file).</summary>
     AccessDenied,
 
+    /// <summary>Another program has the file open and does not share it (a sharing or lock violation).</summary>
+    InUse,
+
     /// <summary>The file could not be read, for example because another program has it locked.</summary>
     ReadFailed,
 

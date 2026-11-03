@@ -34,6 +34,26 @@ public sealed class FileErrorsTests
         Assert.AreEqual(expected, FileErrors.Classify(new SpreadsheetWriteException(reason, "detail")));
 
     [TestMethod]
+    [DataRow(unchecked((int)0x80070020))]
+    [DataRow(unchecked((int)0x80070021))]
+    public void AFileHeldByAnotherProgramIsInUse(int hresult)
+    {
+        var inner = new IOException("The process cannot access the file because it is being used by another process.", hresult);
+
+        Assert.AreEqual(FileProblem.InUse, FileErrors.Classify(new SpreadsheetWriteException(SpreadsheetWriteError.WriteFailed, "detail", inner)));
+        Assert.AreEqual(FileProblem.InUse, FileErrors.Classify(new SpreadsheetReadException(SpreadsheetReadError.ReadFailed, "detail", inner)));
+    }
+
+    [TestMethod]
+    public void AnotherIoErrorKeepsItsReason()
+    {
+        var inner = new IOException("The disk is full.", unchecked((int)0x80070070));
+
+        Assert.AreEqual(FileProblem.WriteFailed, FileErrors.Classify(new SpreadsheetWriteException(SpreadsheetWriteError.WriteFailed, "detail", inner)));
+        Assert.AreEqual(FileProblem.Unknown, FileErrors.Classify(new InvalidOperationException("detail", new IOException("x", unchecked((int)0x80070020)))));
+    }
+
+    [TestMethod]
     public void EveryReasonHasAProblem()
     {
         foreach (var reason in Enum.GetValues<SpreadsheetReadError>())
