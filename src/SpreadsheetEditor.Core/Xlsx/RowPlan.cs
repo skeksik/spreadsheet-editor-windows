@@ -12,9 +12,10 @@ namespace SpreadsheetEditor.Core.Xlsx;
 /// <para>The change is also expressed as a sequence of <see cref="RowShift"/>s: first the removed cards' rows are deleted, bottom up, then
 /// the new rows are inserted, top down, at their final rows (the table name row first). Reordering the cards that stay is not in that
 /// sequence. What belongs to a row (its cells, height and style, the merges, hyperlinks, comments and pictures inside one card's rows)
-/// moves with its card (<see cref="Map"/>, <see cref="MoveRange"/>); a <c>sqref</c> (conditional formatting, data validation, ignored
-/// errors, protected ranges) and a table part's range go through the shifts alone (<see cref="ShiftRange"/>), since one range may cover
-/// several cards.</para>
+/// moves with its card (<see cref="Map"/>, <see cref="MoveRange"/>). A <c>sqref</c> does not follow cards, since one range may cover
+/// several: conditional formatting's and data validation's go through the shifts and then grow to cards added at the table's ends as
+/// rule 4 below says (<see cref="GrowRange"/>; manager, 2026-11-03), so a card added at either end gets the column's validation and
+/// colour rules; ignored errors', protected ranges' and a table part's range go through the shifts alone (<see cref="ShiftRange"/>).</para>
 /// <para>References in formulas, defined names (the print area included), hyperlink locations and charts go through
 /// <see cref="MoveArea"/> (docs/spec.md §9.20; owner, 2026-11-03, and manager within the owner's answer):</para>
 /// <list type="number">
@@ -241,6 +242,38 @@ internal sealed class RowPlan
             return offset == 0 ? area : WithRows(area, top + offset, bottom + offset);
         }
 
+        return Shift(area) is { } shifted ? Grow(area, shifted) : null;
+    }
+
+    /// <summary>
+    /// A <c>sqref</c> of conditional formatting or data validation (ranges separated by spaces) moved by the shifts, each range then
+    /// growing to cards added at the table's ends as rule 4 says; null when every range is deleted. Ranges do not follow cards: one
+    /// range may cover several.
+    /// </summary>
+    /// <exception cref="FormatException">A part is not an A1 range without a sheet name.</exception>
+    public string? GrowRange(string range)
+    {
+        var parts = new List<string>();
+        foreach (var part in range.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!A1Area.TryParse(part, 0, out var area, out var end) || end != part.Length)
+            {
+                throw new FormatException($"'{part}' is not a cell range.");
+            }
+
+            if (Shift(area) is { } shifted)
+            {
+                var grown = Grow(area, shifted);
+                parts.Add(grown == area ? part : grown.ToString());
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join(' ', parts);
+    }
+
+    /// <summary>An area moved by the shifts alone; null when every cell of it is deleted.</summary>
+    private A1Area? Shift(A1Area area)
+    {
         A1Area? current = area;
         foreach (var shift in Shifts)
         {
@@ -252,13 +285,22 @@ internal sealed class RowPlan
             current = FormulaReferences.ShiftArea(a, shift);
         }
 
-        if (current is not { } shifted || area.Kind != A1AreaKind.Cells || readData is not { } read || dataLastRow < FirstDataRow)
+        return current;
+    }
+
+    /// <summary>
+    /// Rule 4: a range of cells as read (<paramref name="area"/>) that reached the table's last card row reaches it after the change,
+    /// and one that covered every card starts at the first card row; <paramref name="shifted"/> is the range moved by the shifts.
+    /// </summary>
+    private A1Area Grow(A1Area area, A1Area shifted)
+    {
+        if (area.Kind != A1AreaKind.Cells || !area.IsRange || readData is not { } read || dataLastRow < FirstDataRow)
         {
-            return current;
+            return shifted;
         }
 
-        // A range that reached the table's last row reaches it after the change (cards added at the end count); one that covered every
-        // card covers every card (cards added at the top count too).
+        var top = Math.Min(area.First.Row, area.Last.Row);
+        var bottom = Math.Max(area.First.Row, area.Last.Row);
         var newTop = Math.Min(shifted.First.Row, shifted.Last.Row);
         var newBottom = Math.Max(shifted.First.Row, shifted.Last.Row);
         if (bottom == read.Last)

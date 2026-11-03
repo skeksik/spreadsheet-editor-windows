@@ -722,6 +722,67 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("Cards!$A$1:$B$1", DefinedName(after, "_xlnm.Print_Area"));
     }
 
+    /// <summary>
+    /// <see cref="Fruit"/> with a colour rule on every card's quantity and on the first three (B2:B6 B2:B4), and a list validation on
+    /// every card's name and on the first two (A2:A6 A2:A3).
+    /// </summary>
+    private static byte[] FruitWithRules() => Edit(Fruit(), document =>
+    {
+        var cards = Sheet(document, "Cards");
+        var conditional = new X.ConditionalFormatting(
+            new X.ConditionalFormattingRule(new X.Formula("B2>3")) { Type = X.ConditionalFormatValues.Expression, Priority = 1 })
+        { SequenceOfReferences = new ListValue<StringValue> { InnerText = "B2:B6 B2:B4" } };
+        cards.InsertAfter(conditional, cards.GetFirstChild<X.SheetData>());
+        var validations = new X.DataValidations(
+            new X.DataValidation(new X.Formula1("\"Apple,Fig\"")) { Type = X.DataValidationValues.List, SequenceOfReferences = new ListValue<StringValue> { InnerText = "A2:A6 A2:A3" } })
+        { Count = 1 };
+        cards.InsertAfter(validations, conditional);
+    });
+
+    private static string ConditionalRanges(XlsxPackage package) =>
+        package.Worksheet("Cards").Descendants<X.ConditionalFormatting>().Single().SequenceOfReferences!.InnerText!;
+
+    private static string ValidationRanges(XlsxPackage package) =>
+        package.Worksheet("Cards").Descendants<X.DataValidation>().Single().SequenceOfReferences!.InnerText!;
+
+    [TestMethod]
+    public void AColourRuleOverEveryCardCoversACardAddedAtTheEnd()
+    {
+        var bytes = Change(FruitWithRules(), w => w.Sheets[0].Cards.Add(NewCard("Fig", "6")));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("B2:B7 B2:B4", ConditionalRanges(after), "a range that ends above the last card does not grow");
+    }
+
+    [TestMethod]
+    public void AValidationOverEveryCardCoversACardAddedAtTheEnd()
+    {
+        var bytes = Change(FruitWithRules(), w => w.Sheets[0].Cards.Add(NewCard("Fig", "6")));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("A2:A7 A2:A3", ValidationRanges(after));
+    }
+
+    [TestMethod]
+    public void ColourRulesAndValidationsOverEveryCardCoverACardAddedAtTheTop()
+    {
+        var bytes = Change(FruitWithRules(), w => w.Sheets[0].Cards.Insert(0, NewCard("Moss", "9")));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("B2:B7 B3:B5", ConditionalRanges(after));
+        Assert.AreEqual("A2:A7 A3:A4", ValidationRanges(after));
+    }
+
+    [TestMethod]
+    public void ColourRulesAndValidationsDoNotFollowAMovedCard()
+    {
+        var bytes = Change(FruitWithRules(), w => Move(w, 2, 0));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("B2:B6 B2:B4", ConditionalRanges(after));
+        Assert.AreEqual("A2:A6 A2:A3", ValidationRanges(after));
+    }
+
     [TestMethod]
     public void ChartSeriesFollowTheRows()
     {

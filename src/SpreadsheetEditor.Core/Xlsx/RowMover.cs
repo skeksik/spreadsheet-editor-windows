@@ -58,10 +58,10 @@ internal static class RowMover
         MoveRows(worksheet, plan);
         MoveMerges(worksheet, plan);
         MoveHyperlinks(worksheet, plan);
-        ShiftSqref(worksheet.Elements<X.ConditionalFormatting>(), plan);
+        ShiftSqref(worksheet.Elements<X.ConditionalFormatting>(), plan, grow: true);
         if (worksheet.GetFirstChild<X.DataValidations>() is { } validations)
         {
-            ShiftSqref(validations.Elements<X.DataValidation>(), plan);
+            ShiftSqref(validations.Elements<X.DataValidation>(), plan, grow: true);
             var count = validations.Elements<X.DataValidation>().Count();
             if (count == 0)
             {
@@ -79,7 +79,9 @@ internal static class RowMover
         {
             foreach (var sqref in extensions.Descendants<Xm.ReferenceSequence>().ToList())
             {
-                if (plan.ShiftRange(sqref.Text) is { } shifted)
+                // Treated as conditional formatting's and data validation's ranges (x14), which is what the writer expects to find here;
+                // not verified that no other extension uses xm:sqref.
+                if (TryGrow(sqref.Text, plan) is { } shifted)
                 {
                     sqref.Text = shifted;
                 }
@@ -223,7 +225,7 @@ internal static class RowMover
     }
 
     /// <summary>Shifts the <c>sqref</c> of each element; an element whose cells are all deleted is removed.</summary>
-    private static void ShiftSqref(IEnumerable<OpenXmlElement> elements, RowPlan plan)
+    private static void ShiftSqref(IEnumerable<OpenXmlElement> elements, RowPlan plan, bool grow = false)
     {
         foreach (var element in elements.ToList())
         {
@@ -233,7 +235,7 @@ internal static class RowMover
                 continue;
             }
 
-            var shifted = TryShift(sqref, plan);
+            var shifted = grow ? TryGrow(sqref, plan) : TryShift(sqref, plan);
             if (shifted is null)
             {
                 element.Remove();
@@ -493,6 +495,18 @@ internal static class RowMover
         try
         {
             return plan.MoveRange(range);
+        }
+        catch (FormatException)
+        {
+            return range;
+        }
+    }
+
+    private static string? TryGrow(string range, RowPlan plan)
+    {
+        try
+        {
+            return plan.GrowRange(range);
         }
         catch (FormatException)
         {
