@@ -14,7 +14,9 @@ SpreadsheetEditor.Core (net10.0, no Windows API)
   Xlsx/        reader (table detection, cards, styles, theme colours, pictures) and writer (in-place edit of the package)
   Csv/         reader and writer
   Imaging/     picture header facts (pixel size, format), the cell layout of pictures, crop rectangles
-  Editing/     operations on the model (add, remove, move, duplicate cards and entries; edit text, style, pictures) with undo and redo
+  Editing/     WorkbookEditor: operations on the model (cards and entries; values, sheets, table name, picture layout to come) with undo,
+               redo, the modified flag and change events (WorkbookChange: CardInserted, CardRemoved, CardMoved, EntriesChanged,
+               EntryRenamed)
 ```
 
 ## The document
@@ -23,6 +25,17 @@ the worksheet (first column, header row, first data row, optional table name), i
 (picture width and height in pixels, pictures per row in a cell). A `Card` is one table row (or a group of rows merged vertically) and
 holds one `Entry` per column. An `Entry` has its text, its original typed value (number, date, boolean, text), an optional `CellStyle`
 (fill, text colour, font, alignment) and its pictures (`EntryImage`: bytes, format, pixel size). `docs/spec.md` defines every rule.
+
+## Editing
+The app edits the document only through `WorkbookEditor`, on the UI thread (the core is not thread-safe, ADR 0002). Each operation is an
+undoable step on one history: a new step drops the redo steps, and loading clears the history. Cards are identified by the `Card`
+object, entries by their `Column` object (spec §9.36); a row span belongs to its card and moves with it, a new card has span 1 and a
+duplicate keeps its source's span but, like every new card, has no source row (`Card.SourceFirstRow` is null), which is how the writer
+tells new cards from read ones. Consecutive renames of one entry (the app sends one per keystroke) are a single step until another
+operation, an undo or redo, a save or `EndTyping` (focus leaves the field). The modified flag compares the undo depth with the depth at
+the last load or save (`MarkSaved`), so undoing back to the saved state clears it; once a new step drops the redo steps that led back to
+that state, the flag stays set until the next save. After every step, undo and redo, `Changed` carries what changed (an undo raises the
+inverse change) and `StateChanged` says that `CanUndo`, `CanRedo` or `IsModified` may have changed.
 
 ## Files
 - `.xlsx`: the reader opens the package with the Open XML SDK and keeps it; the writer edits that same package: cell values and styles
