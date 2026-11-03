@@ -194,7 +194,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             return false;
         }
-        return await SaveToAsync(pick.Path, FileFormats.FromPath(pick.Path, pick.ChosenFormat));
+        return await SaveToAsync(pick.Path, FileFormats.FromPath(pick.Path, pick.FallbackFormat));
     }
 
     private async Task<bool> SaveToAsync(string path, FileFormat format)

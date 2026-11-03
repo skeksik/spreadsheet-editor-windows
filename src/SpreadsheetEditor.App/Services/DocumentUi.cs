@@ -53,6 +53,10 @@ internal sealed class DocumentUi(Window window) : IDocumentUi
                 new List<string> { choice == FileFormat.Csv ? CsvExtension : XlsxExtension });
         }
         var result = await picker.PickSaveFileAsync();
+        // The result holds only the path: Microsoft Learn, "PickFileResult Class" (read 2026-11-03) lists Path as its only property ("a lightweight class that contains a string attribute representing the file path"), and
+        // the picker has no property for the chosen file type after the pick. So the document's format is the fallback for a path without
+        // an extension. Not verified: that the picker appends the chosen type's extension to a name typed without one, which makes the
+        // fallback rare.
         return result is null ? null : new SavePick(result.Path, format);
     }
 
