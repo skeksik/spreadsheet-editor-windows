@@ -5,12 +5,17 @@ namespace SpreadsheetEditor.Core.Tests.ExcelCheck;
 /// <summary>
 /// Small made-up pictures for the Excel check, drawn in code and encoded as real, decodable PNG and baseline JPEG files, so that Excel
 /// shows them. A sample picture has a white region of the aspect it is shown at, holding a black ring that touches the region's longer
-/// sides and a number; everything outside the region is red. In the saved file the region alone must show: a red edge means a wrong
-/// crop, an oval ring means a stretched picture.
+/// sides and a number. Outside the region, a light grey band <see cref="Margin"/> pixels wide borders it, and everything beyond is
+/// red. In the saved file the region alone must show: a thin grey line at a cropped edge is fine (a viewer may blend the pixels just
+/// outside the crop when it scales), red means a crop off by more than the band, and an oval ring means a stretched picture.
 /// </summary>
 internal static class CheckPictures
 {
+    /// <summary>The width in source pixels of the grey band between the region and the red.</summary>
+    public const int Margin = 2;
+
     public static readonly Rgb White = new(255, 255, 255);
+    public static readonly Rgb Grey = new(200, 200, 200);
     public static readonly Rgb Black = new(0, 0, 0);
     public static readonly Rgb Red = new(220, 0, 0);
     public static readonly Rgb Blue = new(0, 70, 200);
@@ -36,8 +41,9 @@ internal static class CheckPictures
             for (var x = 0; x < width; x++)
             {
                 var inside = x >= left && x < left + regionWidth && y >= top && y < top + regionHeight;
+                var near = x >= left - Margin && x < left + regionWidth + Margin && y >= top - Margin && y < top + regionHeight + Margin;
                 var distance = Math.Sqrt(Math.Pow(x + 0.5 - centreX, 2) + Math.Pow(y + 0.5 - centreY, 2));
-                pixels[y, x] = !inside ? Red : distance <= radius && distance >= radius - thickness ? Black : White;
+                pixels[y, x] = !inside ? (near ? Grey : Red) : distance <= radius && distance >= radius - thickness ? Black : White;
             }
         }
 
