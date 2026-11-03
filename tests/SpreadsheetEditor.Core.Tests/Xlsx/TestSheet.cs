@@ -231,7 +231,9 @@ internal sealed class TestSheet
                     new Xdr.NonVisualDrawingProperties { Id = id, Name = $"Picture {id}" },
                     new Xdr.NonVisualPictureDrawingProperties()),
                 new Xdr.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
-                new Xdr.ShapeProperties());
+                // The rect preset geometry, as the writer's own pictures have: Excel for the web does not open a picture whose spPr is empty
+                // (docs/notes/excel-check.md).
+                new Xdr.ShapeProperties(new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
             id++;
             var extent = new Xdr.Extent { Cx = 914400, Cy = 914400 };
             OpenXmlElement element = anchor switch
