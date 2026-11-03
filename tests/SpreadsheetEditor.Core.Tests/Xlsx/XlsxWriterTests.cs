@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml.Packaging;
 using SpreadsheetEditor.Core.Model;
+using SpreadsheetEditor.Core.Tests.Imaging;
 using SpreadsheetEditor.Core.Xlsx;
 using X = DocumentFormat.OpenXml.Spreadsheet;
 
@@ -625,7 +626,8 @@ public sealed class XlsxWriterTests
     public void ADuplicatedSheetCopiesTheWholeWorksheet()
     {
         var book = new TestWorkbook();
-        var sheet = book.AddSheet("Plants").Row("A1", "Name", "Colour").Row("A2", "Fern", "Green").Set("F1", "beside").Width(1, 2, 25).Picture("D5");
+        var sheet = book.AddSheet("Plants").Row("A1", "Name", "Colour").Row("A2", "Fern", "Green").Set("F1", "beside").Width(1, 2, 25)
+            .Picture("P40", PictureBytes.Png(4, 3), PictureAnchor.OneCell);
         sheet.PageSetup = true;
         book.AddDefinedName("_xlnm.Print_Area", "Plants!$A$1:$B$2", 0);
         var original = book.ToBytes();
