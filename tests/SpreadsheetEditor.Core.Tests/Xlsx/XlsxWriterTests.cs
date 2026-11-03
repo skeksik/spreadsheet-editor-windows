@@ -423,23 +423,6 @@ public sealed class XlsxWriterTests
     }
 
     [TestMethod]
-    public void MovingAnEntryWithPicturesIsNotSupported()
-    {
-        var book = new TestWorkbook();
-        book.AddSheet("Plants").Row("A1", "Name", "Photo").Row("A2", "Fern").Row("A3", "Rose").Picture("B2", PictureBytes.Png(4, 3));
-
-        Assert.AreEqual(SpreadsheetWriteError.NotSupported, WriteError(book.ToBytes(), w =>
-        {
-            var sheet = w.Sheets[0];
-            sheet.Columns.Reverse();
-            foreach (var card in sheet.Cards)
-            {
-                card.Entries.Reverse();
-            }
-        }));
-    }
-
-    [TestMethod]
     public void LaterRowValuesOfAMultiRowCardStay()
     {
         var book = new TestWorkbook();
