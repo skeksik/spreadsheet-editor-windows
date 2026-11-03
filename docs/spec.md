@@ -1059,7 +1059,7 @@ Each item states the intended behaviour (**Intended**), the owner's answer (**De
 37. **Hidden-header sheets** list their entries as `Unnamed`, `1`, `2`, … in the dialogs, because entry 0 counts as unnamed. **Intended:** list them as `Entry 1`, `Entry 2`, … (needs a translation, Russian `Поле 1`, …). Q: should users be able to name entries on such sheets, which would turn headers on?
 38. **Typing an entry name that begins with `Unnamed:`** makes it count as unnamed: it is written as an empty header and shown empty next time. **Intended:** only empty names are unnamed. Placeholder names are internal and never collide with user text.
 39. **Sheet name rules.** Names are checked only for exact duplicates. **Intended:**
-    - enforce the worksheet name rules: 1–31 characters, none of `: \ / ? * [ ]`, no leading or trailing apostrophe, and not already used ignoring case;
+    - enforce the worksheet name rules: 1–31 characters, none of `: \ / ? * [ ]` (nor U+0000 or U+0003), no leading or trailing apostrophe, not `History` (reserved by Excel), and not already used ignoring case (Microsoft's rules as quoted in `SheetNames`, read 2026-11-03);
     - show the reason inline in the dialog;
     - for duplicated names, shorten the base name so that ` (Copy n)` fits.
 40. **Double-clicking the empty part of the tab strip** opens Rename with an empty name. If confirmed, nothing is renamed but the document is marked modified. **Intended:** a double-click on empty strip space does nothing. Q: should it add a sheet instead?
