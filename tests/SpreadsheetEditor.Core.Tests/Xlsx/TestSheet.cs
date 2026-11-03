@@ -16,6 +16,10 @@ internal sealed class TestSheet
     private readonly Dictionary<int, uint> rowStyles = [];
     private readonly List<(uint First, uint Last, uint Style)> columnStyles = [];
     private readonly List<(int Column, int Row, byte[] Bytes, PictureAnchor Anchor)> pictures = [];
+    private readonly List<(uint Min, uint Max, double Width)> widths = [];
+
+    /// <summary>When set, the worksheet has page margins and a landscape page setup.</summary>
+    public bool PageSetup { get; set; }
 
     internal TestSheet(TestWorkbook workbook) => this.workbook = workbook;
 
@@ -124,6 +128,29 @@ internal sealed class TestSheet
         return this;
     }
 
+    /// <summary>Sets a shared formula's first cell, whose formula is used by every cell of <paramref name="range"/>.</summary>
+    public TestSheet SharedFormula(string reference, string formula, string range, double cached)
+    {
+        var cell = new X.Cell { CellValue = new X.CellValue(cached.ToString(CultureInfo.InvariantCulture)) };
+        cell.CellFormula = new X.CellFormula(formula) { FormulaType = X.CellFormulaValues.Shared, Reference = range, SharedIndex = 0 };
+        return Put(reference, cell, 0);
+    }
+
+    /// <summary>Sets another cell of shared formula 0: no formula text, only its cached value.</summary>
+    public TestSheet SharedDependent(string reference, double cached)
+    {
+        var cell = new X.Cell { CellValue = new X.CellValue(cached.ToString(CultureInfo.InvariantCulture)) };
+        cell.CellFormula = new X.CellFormula { FormulaType = X.CellFormulaValues.Shared, SharedIndex = 0 };
+        return Put(reference, cell, 0);
+    }
+
+    /// <summary>Gives columns <paramref name="min"/> to <paramref name="max"/> a width (a <c>col</c> element without a style).</summary>
+    public TestSheet Width(uint min, uint max, double width)
+    {
+        widths.Add((min, max, width));
+        return this;
+    }
+
     public TestSheet Merge(string range)
     {
         merges.Add(range);
@@ -152,14 +179,21 @@ internal sealed class TestSheet
             data.AppendChild(row);
         }
         var worksheet = new X.Worksheet();
-        if (columnStyles.Count > 0)
+        if (columnStyles.Count > 0 || widths.Count > 0)
         {
-            worksheet.AppendChild(new X.Columns(columnStyles.Select(c => new X.Column { Min = c.First, Max = c.Last, Style = c.Style, Width = 10, CustomWidth = true })));
+            worksheet.AppendChild(new X.Columns(
+                columnStyles.Select(c => new X.Column { Min = c.First, Max = c.Last, Style = c.Style, Width = 10, CustomWidth = true })
+                    .Concat(widths.Select(c => new X.Column { Min = c.Min, Max = c.Max, Width = c.Width, CustomWidth = true }))));
         }
         worksheet.AppendChild(data);
         if (merges.Count > 0)
         {
             worksheet.AppendChild(new X.MergeCells(merges.Select(m => new X.MergeCell { Reference = m })));
+        }
+        if (PageSetup)
+        {
+            worksheet.AppendChild(new X.PageMargins { Left = 0.5, Right = 0.5, Top = 0.75, Bottom = 0.75, Header = 0.3, Footer = 0.3 });
+            worksheet.AppendChild(new X.PageSetup { Orientation = X.OrientationValues.Landscape });
         }
         return worksheet;
     }

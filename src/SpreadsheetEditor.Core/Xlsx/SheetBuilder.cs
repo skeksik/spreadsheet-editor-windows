@@ -37,7 +37,7 @@ internal static class SheetBuilder
         {
             // Hidden headers: the entries are known by position only, and the header row is the first card (docs/spec.md §3.3).
             var header = table.HeadersHidden ? null : grid.Get(table.HeaderRow, column);
-            sheet.Columns.Add(new Column(header is null || header.IsBlank ? "" : header.Value.DisplayText));
+            sheet.Columns.Add(new Column(header is null || header.IsBlank ? "" : header.Value.DisplayText) { SourceIndex = column - table.FirstColumn });
         }
 
         // Values come from a card's first row only; its later rows stay in the file as they are (§9.7).
