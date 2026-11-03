@@ -48,6 +48,10 @@ internal sealed class WorksheetCells
                     Commit(grid, ref cell);
                     row = int.TryParse(Attribute(reader, "r"), NumberStyles.None, CultureInfo.InvariantCulture, out var r) ? r : row + 1;
                     column = 0;
+                    if (Attribute(reader, "customFormat") is "1" or "true" && UInt(Attribute(reader, "s")) is { } rowStyle)
+                    {
+                        grid.SetRowStyle(row, rowStyle);
+                    }
                     if ((++rowsRead & 0xFFF) == 0)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -65,8 +69,12 @@ internal sealed class WorksheetCells
                     {
                         column++;
                     }
-                    var style = uint.TryParse(Attribute(reader, "s"), NumberStyles.None, CultureInfo.InvariantCulture, out var s) ? s : 0;
-                    cell = new PendingCell(row, column, Attribute(reader, "t"), style);
+                    var explicitStyle = UInt(Attribute(reader, "s"));
+                    if (explicitStyle is { } cellStyle)
+                    {
+                        grid.SetCellStyle(row, column, cellStyle);
+                    }
+                    cell = new PendingCell(row, column, Attribute(reader, "t"), explicitStyle ?? 0);
                     inPhonetic = false;
                 }
                 else if (cell is not null && type == typeof(X.CellValue))
@@ -90,6 +98,13 @@ internal sealed class WorksheetCells
                 else if (cell is not null && type == typeof(X.Text) && !inPhonetic)
                 {
                     (cell.Inline ??= new StringBuilder()).Append(reader.GetText());
+                }
+                else if (type == typeof(X.Column))
+                {
+                    if (UInt(Attribute(reader, "min")) is { } min && UInt(Attribute(reader, "max")) is { } max && UInt(Attribute(reader, "style")) is { } columnStyle)
+                    {
+                        grid.SetColumnStyle((int)Math.Min(min, CellReference.MaxColumn), (int)Math.Min(max, CellReference.MaxColumn), columnStyle);
+                    }
                 }
                 else if (type == typeof(X.MergeCell))
                 {
@@ -143,6 +158,9 @@ internal sealed class WorksheetCells
         int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var index) && index < sharedStrings.Length
             ? sharedStrings[index]
             : throw new InvalidDataException($"A cell refers to shared string {raw}, which the workbook does not have.");
+
+    private static uint? UInt(string? text) =>
+        uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : null;
 
     private static string? Attribute(OpenXmlReader reader, string localName)
     {
