@@ -1,7 +1,7 @@
 # Excel check
 
 Files saved by the xlsx writer (PRs #19, #21, #22) have not been opened in Excel yet, and CI cannot do it. This check opens nine sample
-workbooks in Excel on the owner's PC. Each file is made the way the app makes one: a source workbook is built in code, read with
+workbooks, and one control file, in Excel on the owner's PC. Each file is made the way the app makes one: a source workbook is built in code, read with
 `XlsxReader`, edited with `WorkbookEditor` and saved with `XlsxWriter`. Roadmap items: `test/xlsx-in-excel` and
 `spike/jpeg-orientation` (M1).
 
@@ -20,10 +20,11 @@ Remove-Item Env:EXCEL_CHECK_DIR
 explorer "$env:TEMP\excel-check"
 ```
 
-The tests must all pass (`Passed!`). The folder then holds `01-values.xlsx` … `09-jpeg-orientation.xlsx`, a few KB each. Running
+The tests must all pass (`Passed!`). The folder then holds `00-control.xlsx` and `01-values.xlsx` … `09-jpeg-orientation.xlsx`, a few KB each. Running
 the command again overwrites them. Without `EXCEL_CHECK_DIR`, the tests write the files to a temporary folder and delete them.
 
-The code is in `tests/SpreadsheetEditor.Core.Tests/ExcelCheck/` (`ExcelCheckSamples.cs` builds the samples).
+The code is in `tests/SpreadsheetEditor.Core.Tests/ExcelCheck/`: `ExcelCheckSamples.cs` builds the samples and `CheckPictures.cs` draws
+the pictures.
 
 ## How to check each file
 
@@ -44,6 +45,15 @@ Every sheet the app wrote has a **hidden column XFD** (the last column), holding
 
 Values were typed as in the app with the English (United States) language: for example, `3/15/2024` means 15 March 2024. Excel shows
 dates and numbers in the PC's own format, so the expected values below are given without a format, as in "15 March 2024".
+
+### 00-control.xlsx: open this one first
+
+This file was made by the test builders alone (`TestWorkbook` in the tests): the app neither read nor wrote it. It is the source of
+03-cards before the edits, with a picture added. **If Excel offers to repair this file, the test builders are at fault, not the
+writer**, and the other files' repair prompts tell nothing about the writer until that is fixed. Note it in the results and stop.
+
+Expected: sheets **Cards**, **Report**, **Check**. Cards: A1:B6 `Name`, `Qty`, Apple 1, Banana 2, Cherry 3, Damson 4, Elder 5; A20
+`Total`, B20 **15**; D20:E20 merged; A24 on a yellow fill; a picture (number 0) at G2. Report: B2 **15**, B3 **1**, B4 **15**.
 
 ### 01-values.xlsx: typed values
 
@@ -199,6 +209,7 @@ Excel version: … · Date: … · Windows display language and region format: �
 
 | File | Opens without repair | Matches the list | Notes (what differed) |
 |---|---|---|---|
+| 00-control.xlsx | | | |
 | 01-values.xlsx | | | |
 | 02-styles.xlsx | | | |
 | 03-cards.xlsx | | | |

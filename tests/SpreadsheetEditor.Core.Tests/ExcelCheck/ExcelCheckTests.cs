@@ -14,6 +14,9 @@ public sealed partial class ExcelCheckTests
     /// <summary>The environment variable naming the folder that receives a copy of each sample.</summary>
     public const string FolderVariable = "EXCEL_CHECK_DIR";
 
+    /// <summary>The control file: a source workbook as the test builders make it, which the app does not touch.</summary>
+    public const string ControlFileName = "00-control.xlsx";
+
     private string folder = "";
 
     public TestContext TestContext { get; set; } = null!;
@@ -60,15 +63,20 @@ public sealed partial class ExcelCheckTests
 
         AssertValid(bytes, fileName);
 
+        Copy(path);
+        return new Saved(bytes, XlsxReader.Read(path, ExcelCheckSamples.Culture));
+    }
+
+    /// <summary>Copies a written file to <see cref="FolderVariable"/>'s folder when the variable is set.</summary>
+    private void Copy(string path)
+    {
         var target = Environment.GetEnvironmentVariable(FolderVariable);
         if (!string.IsNullOrWhiteSpace(target))
         {
             Directory.CreateDirectory(target);
-            File.Copy(path, Path.Combine(target, fileName), overwrite: true);
-            TestContext.WriteLine($"Copied {fileName} to {target}.");
+            File.Copy(path, Path.Combine(target, Path.GetFileName(path)), overwrite: true);
+            TestContext.WriteLine($"Copied {Path.GetFileName(path)} to {target}.");
         }
-
-        return new Saved(bytes, XlsxReader.Read(path, ExcelCheckSamples.Culture));
     }
 
     private static void AssertValid(byte[] bytes, string fileName)

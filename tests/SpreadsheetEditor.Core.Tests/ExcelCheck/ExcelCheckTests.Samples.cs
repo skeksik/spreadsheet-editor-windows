@@ -1,6 +1,7 @@
 using DocumentFormat.OpenXml.Packaging;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Tests.Xlsx;
+using SpreadsheetEditor.Core.Xlsx;
 using X = DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
@@ -9,6 +10,21 @@ namespace SpreadsheetEditor.Core.Tests.ExcelCheck;
 /// <summary>One test per sample: what docs/notes/excel-check.md tells the owner to look for, checked on the saved file.</summary>
 public sealed partial class ExcelCheckTests
 {
+    [TestMethod]
+    public void ControlFile()
+    {
+        var bytes = ExcelCheckSamples.Control();
+        var path = Path.Combine(folder, ControlFileName);
+        File.WriteAllBytes(path, bytes);
+        Copy(path);
+
+        // The control is the builders' own file: the reader finds the same table as in 03-cards before its edits.
+        var sheet = XlsxReader.Read(path, ExcelCheckSamples.Culture).Sheets.Single(s => s.Name == "Cards");
+        AssertSequence(sheet.Cards.Select(c => c.Entries[0].Text), "Apple", "Banana", "Cherry", "Damson", "Elder");
+        using var package = new XlsxPackage(bytes);
+        Assert.HasCount(1, package.Part("Cards").DrawingsPart!.WorksheetDrawing!.Elements<Xdr.OneCellAnchor>());
+    }
+
     [TestMethod]
     public void SampleValues()
     {

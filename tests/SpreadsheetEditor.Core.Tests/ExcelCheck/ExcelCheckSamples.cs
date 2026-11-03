@@ -103,9 +103,37 @@ internal static class ExcelCheckSamples
     /// </summary>
     public static Workbook Cards()
     {
+        var book = CardsSource("03 cards: Banana removed, Elder moved to the top, Fig added at the end, Grape inserted above Cherry.");
+        var (editor, sheet) = Open(book, "Cards");
+        var banana = sheet.Cards[1];
+        var cherry = sheet.Cards[2];
+        var elder = sheet.Cards[4];
+        editor.RemoveCard(sheet, banana);
+        editor.MoveCard(sheet, elder, 0);
+        var fig = editor.AddCard(sheet);
+        Type(editor, sheet, fig, "Name", "Fig");
+        Type(editor, sheet, fig, "Qty", "6");
+        var grape = editor.InsertCardAbove(sheet, cherry);
+        Type(editor, sheet, grape, "Name", "Grape");
+        Type(editor, sheet, grape, "Qty", "7");
+        return editor.Workbook;
+    }
+
+    /// <summary>
+    /// The source workbook of sample 03, whose last sheet "Check" says <paramref name="checkLine"/>; with <paramref name="picture"/>, a
+    /// picture anchored at G2 too.
+    /// </summary>
+    private static TestWorkbook CardsSource(string checkLine, bool picture = false)
+    {
         var book = new TestWorkbook();
         var yellow = book.AddStyle(fill: TestWorkbook.Solid(new X.ForegroundColor { Rgb = "FFFFFF00" }));
-        book.AddSheet("Cards")
+        var cards = book.AddSheet("Cards");
+        if (picture)
+        {
+            cards.Picture("G2", CheckPictures.Png(40, 60, 2, 3, 0), PictureAnchor.OneCell);
+        }
+
+        cards
             .Row("A1", "Name", "Qty")
             .Row("A2", "Apple", 1)
             .Row("A3", "Banana", 2)
@@ -125,21 +153,20 @@ internal static class ExcelCheckSamples
             .Row("A4", "Named total").Formula("B4", "CardTotal", 15);
         book.AddDefinedName("CardTotal", "Cards!$B$20");
         book.AddDefinedName("_xlnm.Print_Area", "Cards!$A$1:$E$24", 0);
-        AddCheckSheet(book, "03 cards: Banana removed, Elder moved to the top, Fig added at the end, Grape inserted above Cherry.");
+        AddCheckSheet(book, checkLine);
+        return book;
+    }
 
-        var (editor, sheet) = Open(book, "Cards");
-        var banana = sheet.Cards[1];
-        var cherry = sheet.Cards[2];
-        var elder = sheet.Cards[4];
-        editor.RemoveCard(sheet, banana);
-        editor.MoveCard(sheet, elder, 0);
-        var fig = editor.AddCard(sheet);
-        Type(editor, sheet, fig, "Name", "Fig");
-        Type(editor, sheet, fig, "Qty", "6");
-        var grape = editor.InsertCardAbove(sheet, cherry);
-        Type(editor, sheet, grape, "Name", "Grape");
-        Type(editor, sheet, grape, "Qty", "7");
-        return editor.Workbook;
+    /// <summary>
+    /// 00: the control: a source workbook as the test builders make it (sample 03's, with a picture added), not read or written by the
+    /// app. If Excel offers to repair this file too, the builders are at fault, not the writer.
+    /// </summary>
+    public static byte[] Control()
+    {
+        var book = CardsSource("00 control: made by the test builders alone; the app did not read or write this file.", picture: true);
+        var bytes = book.ToBytes();
+        var errors = PackageValidation.Errors(bytes);
+        return errors.Count == 0 ? bytes : throw new InvalidOperationException("The control is not valid:\n" + string.Join("\n", errors));
     }
 
     /// <summary>04: a table name given to a table read without one: a row is inserted above the header and everything below shifts.</summary>
