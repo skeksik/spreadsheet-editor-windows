@@ -1017,6 +1017,7 @@ Each item states the intended behaviour (**Intended**), the owner's answer (**De
 10. **Empty sheets are skipped at load and then deleted on save.** **Intended:** keep sheets the app does not show, untouched, in the saved workbook. Q: should they appear as tabs instead?
 11. **`.xls`** is offered but always fails. Q: support `.xls` reading (saving to `.xlsx`), or remove it from the filter and the drop targets?
 12. **Chart sheets** or other non-grid sheets may make the whole load fail. **Intended:** skip and preserve them.
+    - **Hidden worksheets** (not covered above). **Decided (owner, 2026-11-03):** read them like every other worksheet (section 4.1) and show them as tabs; their hidden state is written back unchanged.
 13. **Failed load clears the open document**, because tabs are removed before parsing. **Intended:** parse first, then replace the document only on success.
 14. **CSV with only a header gives a sheet with zero cards.** **Decided (owner, 2026-11-03):** such a file opens with one empty card, matching the "at least one card" rule. Saving it without typing anything writes the header line alone.
 15. **CSV encoding and delimiter** are fixed at UTF-8 and comma. **Decided (owner, 2026-11-03):**

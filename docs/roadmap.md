@@ -25,8 +25,9 @@ references are to `docs/spec.md`.
       and the hidden-header test (§4.1, §9.1, §9.9), values with their types, dates and formulas (§4.2, §9.2–9.3), merged-row
       grouping by table merges only (§4.3, §9.7), theme and indexed colours with tint and automatic text colour (§4.4, §9.5–9.6),
       fonts and alignment, pictures anchored to cells, layout metadata clamped (§4.5, §9.50); unsupported sheets skipped and kept
-      (§9.10, §9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's text. Tests build
-      workbooks in code.
+      (§9.10, §9.12), hidden worksheets read (§9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's
+      text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets), then
+      `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
 - [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
@@ -36,6 +37,8 @@ references are to `docs/spec.md`.
 - [ ] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35): separator and encoding detected and kept,
       one empty card for a header-only file, export of one given sheet, round-trip tests.
 - [ ] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
+- [ ] `spike/jpeg-orientation` (local): does Excel apply a JPEG's EXIF orientation to a picture in an `.xlsx`? Check an
+      orientation-6 JPEG on the owner's PC; if it does, `feat/picture-facts` swaps width and height for orientations 5–8. Notes only.
 
 ## M2: Editing in the core (cloud)
 - [ ] `feat/editing-ops`: operations on the model with undo and redo: cards (add above/below/end, duplicate, remove, move), entries
@@ -47,7 +50,7 @@ references are to `docs/spec.md`.
 - [ ] `feat/app-document`: New, Open, Save, Save as with the system pickers and Ctrl+N/O/S/Shift+S; title `{file} - Spreadsheet
       Editor` with an unsaved marker; Save / Don't save / Cancel on close, open and drop; open and save off the UI thread with a
       progress state; errors in a ContentDialog with details in an expander; drop a file on the window to open it (spec §2.1–2.2,
-      §10.4–10.8, §10.17).
+      §10.4–10.8, §10.17). Saves write a temporary file and replace the target, so a failed save never damages the file.
 - [ ] `feat/app-sheets`: one TabView tab per sheet with add, close (asks only for non-empty sheets), drag to reorder, inline rename,
       duplicate, context menu with icons and accelerators, Ctrl+T/W/Tab (§2.3, §10.1, §10.22–10.23).
 - [ ] `feat/app-cards`: the sheet page: the settings bar (table name, picture width and height NumberBoxes with headers, aspect lock

@@ -40,7 +40,9 @@ pwsh ./build.ps1 -Smoke                                            # Windows onl
 ```
 CI (`.github/workflows/ci.yml`) runs the core on Linux and Windows and publishes, smoke-runs and uploads the app on Windows (x64, and
 builds ARM64). The app (WinUI) cannot be built in a Linux cloud container: say so in the PR and let CI build it. In a cloud container,
-check `dotnet --version` first; if .NET 10 is missing, CI builds and tests the core too, and the PR says so.
+check `dotnet --version` first; if .NET 10 is missing, install the SDK into the container only, outside the repo, with Microsoft's
+script and the repo's `global.json` (`dotnet-install.sh --jsonfile global.json --install-dir ~/.dotnet`; owner, 2026-11-03), then
+run the commands above. If the install fails, CI builds and tests the core, and the PR says so.
 
 ## Conventions
 - C# latest, nullable enabled, warnings are errors (`Directory.Build.props`). File-scoped namespaces, one public type per file.
