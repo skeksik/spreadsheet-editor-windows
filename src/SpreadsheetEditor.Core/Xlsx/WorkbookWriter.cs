@@ -248,7 +248,7 @@ internal sealed class WorkbookWriter
                 var pictures = SheetPictures.ForSource(plan.Sheet, origin, source, slots);
                 plan.Pictures = pictures;
                 plan.Rows = RowPlan.Create(plan.Sheet, origin, slots, pictures.RowsNeeded);
-                references.AddShifts(plan.Sheet.Name, plan.Rows.Shifts);
+                references.AddRows(plan.Sheet.Name, plan.Rows);
             }
         }
 
@@ -454,8 +454,9 @@ internal sealed class WorkbookWriter
     /// <summary>
     /// Rewrites every reference the save changes (docs/spec.md §9.20, §9.30): renamed sheets' names and moved rows, in every worksheet's
     /// formulas (cells, conditional formatting, data validation, hyperlink locations, extensions, tables' column formulas), in defined
-    /// names (the print area included), in charts' series formulas and in pivot caches' source sheet names. Formulas in rows that move
-    /// with their card are also translated by that move. Runs before any row moves.
+    /// names (the print area included), in charts' series formulas and in pivot caches' source sheet names. A reference to a moved card's
+    /// cell follows the card (<see cref="RowPlan.MoveArea"/>), so a formula that moves with its card keeps pointing at its own row. Runs
+    /// before any row moves.
     /// </summary>
     private static void RewriteReferences(
         SpreadsheetDocument document, WorkbookPart workbookPart, X.Workbook root, List<X.Sheet> order, List<SheetPlan> plans, ReferenceTransform references)
@@ -483,13 +484,7 @@ internal sealed class WorkbookWriter
             FormulaRewriter.RewriteCells(
                 worksheet,
                 name,
-                (text, row, _) =>
-                {
-                    var rewritten = references.Apply(text, name);
-                    return rows is not null && rows.Map(row) is { } moved && rows.Positional(row) is { } position && moved != position
-                        ? FormulaReferences.Translate(rewritten, moved - position, 0)
-                        : rewritten;
-                },
+                (text, _, _) => references.Apply(text, name),
                 rows is null ? null : rows.Map);
             FormulaRewriter.RewriteOther(worksheet, text => references.Apply(text, name));
             foreach (var table in part.TableDefinitionParts.Select(t => t.Table).OfType<X.Table>())

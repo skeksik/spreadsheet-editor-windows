@@ -493,9 +493,10 @@ internal sealed class WorksheetWriter
 
             var moved = anchor == fromRow ? text : FormulaReferences.Translate(text, anchor - fromRow, 0);
             var shifted = context.References.Apply(moved, sheet.Name);
-            var positional = plan?.Positional(anchor) ?? anchor;
+            // The references now point where the anchor row's content is after the save; the copy is that content moved to its row.
+            var landed = plan?.Map(anchor) ?? anchor;
             var formulaCell = Prepare(row, column, source.Style(fromRow, fromColumn));
-            formulaCell.CellFormula = new X.CellFormula(FormulaReferences.Translate(shifted, row - positional, column - fromColumn));
+            formulaCell.CellFormula = new X.CellFormula(FormulaReferences.Translate(shifted, row - landed, column - fromColumn));
             return;
         }
 

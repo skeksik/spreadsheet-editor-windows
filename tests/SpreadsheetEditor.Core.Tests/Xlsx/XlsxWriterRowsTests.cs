@@ -137,7 +137,7 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("20", after.Text("Plants", "B4"));
         // The content below moved down a row, with its row height, merge and formulas; the total now covers the new card.
         Assert.AreEqual("Total", after.Text("Plants", "A16"));
-        Assert.AreEqual("SUM(B2:B3)", Formula(after, "Plants", "B16"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Plants", "B16"));
         Assert.AreEqual("B16*2", Formula(after, "Plants", "E16"));
         Assert.IsNull(after.Cell("Plants", "A15"));
         Assert.AreEqual(30, after.Worksheet("Plants").Descendants<X.Row>().Single(r => r.RowIndex! == 16u).Height!.Value);
@@ -193,7 +193,7 @@ public sealed class XlsxWriterRowsTests
     }
 
     [TestMethod]
-    public void ReorderedCardsMoveTheirWholeRowsAndReferencesStayByPosition()
+    public void ReorderedCardsMoveTheirWholeRowsAndReferencesFollowThem()
     {
         var book = new TestWorkbook();
         book.AddSheet("Plants").Row("A1", "Name", "Note").Row("A2", "Fern", "shade").Row("B3", "later").Merge("A2:A3").Set("F2", "beside")
@@ -211,9 +211,9 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("beside", after.Text("Plants", "F3"));
         Assert.AreEqual("A3:A4", after.Worksheet("Plants").Descendants<X.MergeCell>().Single().Reference!.Value);
         Assert.AreEqual(40, after.Worksheet("Plants").Descendants<X.Row>().Single(r => r.RowIndex! == 4u).Height!.Value);
-        // Rows below keep their place; a reference to the table keeps its position (as after a sort).
+        // Rows below keep their place; a reference to Rose's cell follows Rose to row 2.
         Assert.AreEqual("after", after.Text("Plants", "A15"));
-        Assert.AreEqual("B4", Formula(after, "Plants", "B15"));
+        Assert.AreEqual("B2", Formula(after, "Plants", "B15"));
         var back = Read(bytes).Sheets[0];
         AssertSequence(back.Cards.Select(c => c.Entries[0].Text), "Rose", "Fern");
         AssertSequence(back.Cards.Select(c => c.SourceRowSpan.ToString(Invariant)), "1", "2");
@@ -251,8 +251,9 @@ public sealed class XlsxWriterRowsTests
         var bytes = Change(book.ToBytes(), w => w.Sheets[0].Cards.Reverse());
 
         using var after = new XlsxPackage(bytes);
-        // The cells move with their card; relative references move with them, absolute ones stay.
-        Assert.AreEqual("$B$2+B2", Formula(after, "Sums", "C2"));
+        // The cells move with their card, and every reference to a moved card's cell follows that card, absolute ones too: Two's
+        // formula pointed at One's value ($B$2) and its own (B3); One is now in row 3 and Two in row 2.
+        Assert.AreEqual("$B$3+B2", Formula(after, "Sums", "C2"));
         Assert.AreEqual("B3+1", Formula(after, "Sums", "C3"));
         Assert.IsTrue(after.Workbook.CalculationProperties!.FullCalculationOnLoad!.Value);
     }
@@ -363,7 +364,7 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("$B$2+1", Formula(after, "Sums", "D4"), "absolute references stay");
         Assert.AreEqual("Two", after.Text("Sums", "A4"));
         Assert.AreEqual(after.Cell("Sums", "A3")!.StyleIndex?.Value, after.Cell("Sums", "A4")!.StyleIndex?.Value, "the copy takes its source's styles");
-        Assert.AreEqual("SUM(C2:C3)", Formula(after, "Sums", "B16"), "a row inserted below a range does not grow it");
+        Assert.AreEqual("SUM(C2:C4)", Formula(after, "Sums", "B16"), "a range that reached the last card grows over a card added at the end");
     }
 
     [TestMethod]
@@ -398,7 +399,7 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual("B3*2", Formula(after, "Sums", "C3"), "its own row, not #REF! for the deleted row");
         Assert.AreEqual("B2*2", Formula(after, "Sums", "C2"));
         Assert.AreEqual("#REF!+1", Formula(after, "Sums", "D2"), "the kept card's reference to the deleted row");
-        Assert.AreEqual("SUM(C2:C2)", Formula(after, "Sums", "B15"));
+        Assert.AreEqual("SUM(C2:C3)", Formula(after, "Sums", "B15"), "shrunk by the removed card, grown by the copy at the end");
     }
 
     [TestMethod]
@@ -550,6 +551,177 @@ public sealed class XlsxWriterRowsTests
         Assert.AreEqual(("H6:I7", "H6:I7"), (moved.Reference!.Value, moved.AutoFilter!.Reference!.Value));
     }
 
+    /// <summary>
+    /// Five cards (Apple 1 … Elder 5 in rows 2–6) and, below them from row 20, references into the table: a total over every card, a
+    /// sum that ends above the last card, single cells (relative and absolute) in Cherry's and Banana's rows, a range inside Cherry's row;
+    /// another sheet's references, a workbook-level and a sheet-level defined name, a print area ending at the last card and a hyperlink
+    /// to Cherry's quantity.
+    /// </summary>
+    private static byte[] Fruit()
+    {
+        var book = new TestWorkbook();
+        book.AddSheet("Cards").Row("A1", "Name", "Qty").Row("A2", "Apple", 1).Row("A3", "Banana", 2).Row("A4", "Cherry", 3)
+            .Row("A5", "Damson", 4).Row("A6", "Elder", 5)
+            .Set("A20", "Total").Formula("B20", "SUM(B2:B6)", 15)
+            .Set("A21", "First three").Formula("B21", "SUM(B2:B4)", 6)
+            .Set("A22", "Cherry").Formula("B22", "B4", 3)
+            .Set("A23", "Cherry fixed").Formula("B23", "$B$4*2", 6)
+            .Set("A24", "Cherry row").Formula("B24", "SUM(A4:B4)", 3)
+            .Set("A25", "Banana").Formula("B25", "B3", 2);
+        book.AddSheet("Report").Row("A1", "Item", "Value").Row("A2", "Cherry").Formula("B2", "Cards!B4", 3)
+            .Row("A3", "All").Formula("B3", "SUM(Cards!B2:B6)", 15);
+        book.AddDefinedName("CherryQty", "Cards!$B$4");
+        book.AddDefinedName("Quantities", "Cards!$B$2:$B$6", 0);
+        book.AddDefinedName("_xlnm.Print_Area", "Cards!$A$1:$B$6", 0);
+        return Edit(book.ToBytes(), document =>
+        {
+            var cards = Sheet(document, "Cards");
+            cards.InsertAfter(new X.Hyperlinks(new X.Hyperlink { Reference = "A22", Location = "Cards!B4" }), cards.GetFirstChild<X.SheetData>());
+        });
+    }
+
+    private static string[] Names(byte[] bytes) => Read(bytes).Sheets[0].Cards.Select(c => c.Entries[0].Text).ToArray();
+
+    private static void Move(Workbook workbook, int from, int to)
+    {
+        var cards = workbook.Sheets[0].Cards;
+        var card = cards[from];
+        cards.RemoveAt(from);
+        cards.Insert(to, card);
+    }
+
+    /// <summary>Asserts where the references to Cherry's cells point after the save.</summary>
+    private static void AssertCherry(XlsxPackage after, int row, int totalRow = 20)
+    {
+        string At(int offset) => "B" + (totalRow + offset).ToString(Invariant);
+        Assert.AreEqual($"B{row}", Formula(after, "Cards", At(2)));
+        Assert.AreEqual($"$B${row}*2", Formula(after, "Cards", At(3)));
+        Assert.AreEqual($"SUM(A{row}:B{row})", Formula(after, "Cards", At(4)), "a range inside one card follows it");
+        Assert.AreEqual($"Cards!B{row}", Formula(after, "Report", "B2"));
+        Assert.AreEqual($"Cards!$B${row}", DefinedName(after, "CherryQty"));
+        Assert.AreEqual($"Cards!B{row}", after.Worksheet("Cards").Descendants<X.Hyperlink>().Single().Location!.Value);
+    }
+
+    [TestMethod]
+    public void AReferenceToACardMovedUpFollowsIt()
+    {
+        var bytes = Change(Fruit(), w => Move(w, 2, 0));
+
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(Names(bytes), "Cherry", "Apple", "Banana", "Damson", "Elder");
+        AssertCherry(after, 2);
+        Assert.AreEqual("B4", Formula(after, "Cards", "B25"), "Banana moved down a row");
+        // Ranges over several cards keep their block of rows.
+        Assert.AreEqual("SUM(B2:B6)", Formula(after, "Cards", "B20"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Cards", "B21"));
+        Assert.AreEqual("SUM(Cards!B2:B6)", Formula(after, "Report", "B3"));
+        Assert.AreEqual("Cards!$A$1:$B$6", DefinedName(after, "_xlnm.Print_Area"));
+    }
+
+    [TestMethod]
+    public void AReferenceToACardMovedDownFollowsIt()
+    {
+        var bytes = Change(Fruit(), w => Move(w, 0, 4));
+
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(Names(bytes), "Banana", "Cherry", "Damson", "Elder", "Apple");
+        AssertCherry(after, 3);
+        Assert.AreEqual("B2", Formula(after, "Cards", "B25"));
+        Assert.AreEqual("SUM(B2:B6)", Formula(after, "Cards", "B20"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Cards", "B21"));
+    }
+
+    [TestMethod]
+    public void ReferencesFollowAMovedCardThroughADeletionAndAnInsertion()
+    {
+        var bytes = Change(Fruit(), w =>
+        {
+            var cards = w.Sheets[0].Cards;
+            cards.RemoveAt(1);
+            cards.Insert(1, NewCard("Grape", "7"));
+            Move(w, 2, 4);
+        });
+
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(Names(bytes), "Apple", "Grape", "Damson", "Elder", "Cherry");
+        AssertCherry(after, 6);
+        Assert.AreEqual("#REF!", Formula(after, "Cards", "B25"), "Banana's row was deleted");
+        // Banana's row deleted and Grape's inserted inside both ranges: each keeps its block.
+        Assert.AreEqual("SUM(B2:B6)", Formula(after, "Cards", "B20"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Cards", "B21"));
+        Assert.AreEqual("Cards!$B$2:$B$6", DefinedName(after, "Quantities"));
+    }
+
+    [TestMethod]
+    public void ATotalBelowTheTableGrowsOverCardsAddedAtTheEnd()
+    {
+        var bytes = Change(Fruit(), w =>
+        {
+            w.Sheets[0].Cards.Add(NewCard("Fig", "6"));
+            w.Sheets[0].Cards.Add(NewCard("Grape", "7"));
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("Total", after.Text("Cards", "A22"));
+        Assert.AreEqual("SUM(B2:B8)", Formula(after, "Cards", "B22"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Cards", "B23"), "a range that ends above the last card does not grow");
+        AssertCherry(after, 4, totalRow: 22);
+        Assert.AreEqual("SUM(Cards!B2:B8)", Formula(after, "Report", "B3"));
+        Assert.AreEqual("Cards!$B$2:$B$8", DefinedName(after, "Quantities"));
+        Assert.AreEqual("Cards!$A$1:$B$8", DefinedName(after, "_xlnm.Print_Area"));
+    }
+
+    [TestMethod]
+    public void ARangeOverEveryCardGrowsOverACardAddedAtTheTop()
+    {
+        var bytes = Change(Fruit(), w => w.Sheets[0].Cards.Insert(0, NewCard("Moss", "9")));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("SUM(B2:B7)", Formula(after, "Cards", "B21"));
+        Assert.AreEqual("SUM(B3:B5)", Formula(after, "Cards", "B22"), "a range over some cards moves down, as in Excel");
+        AssertCherry(after, 5, totalRow: 21);
+        Assert.AreEqual("SUM(Cards!B2:B7)", Formula(after, "Report", "B3"));
+        Assert.AreEqual("Cards!$A$1:$B$7", DefinedName(after, "_xlnm.Print_Area"));
+    }
+
+    [TestMethod]
+    public void ATotalShrinksWhenTheLastCardIsRemoved()
+    {
+        var bytes = Change(Fruit(), w => w.Sheets[0].Cards.RemoveAt(4));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("SUM(B2:B5)", Formula(after, "Cards", "B19"));
+        Assert.AreEqual("SUM(B2:B4)", Formula(after, "Cards", "B20"));
+        Assert.AreEqual("Cards!$A$1:$B$5", DefinedName(after, "_xlnm.Print_Area"));
+    }
+
+    [TestMethod]
+    public void ATotalCoversACardAddedAfterTheRemovedLastCard()
+    {
+        var bytes = Change(Fruit(), w =>
+        {
+            w.Sheets[0].Cards.RemoveAt(4);
+            w.Sheets[0].Cards.Add(NewCard("Fig", "6"));
+        });
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("SUM(B2:B6)", Formula(after, "Cards", "B20"));
+        Assert.AreEqual("Fig", after.Text("Cards", "A6"));
+    }
+
+    [TestMethod]
+    public void RemovingEveryCardLeavesReferencesToTheirRowsBroken()
+    {
+        var bytes = Change(Fruit(), w => w.Sheets[0].Cards.Clear());
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("Total", after.Text("Cards", "A15"));
+        Assert.AreEqual("SUM(#REF!)", Formula(after, "Cards", "B15"));
+        Assert.AreEqual("#REF!", Formula(after, "Cards", "B17"));
+        Assert.AreEqual("Cards!#REF!", Formula(after, "Report", "B2"));
+        Assert.AreEqual("Cards!$A$1:$B$1", DefinedName(after, "_xlnm.Print_Area"));
+    }
+
     [TestMethod]
     public void ChartSeriesFollowTheRows()
     {
@@ -570,8 +742,8 @@ public sealed class XlsxWriterRowsTests
 
         using var after = new XlsxPackage(bytes);
         var chart = after.Part("Report").DrawingsPart!.ChartParts.Single();
-        // A row inserted at the range's first row moves the whole range, as a spreadsheet program does.
-        Assert.AreEqual("Plants!$B$3:$B$4", chart.ChartSpace!.Descendants<C.Formula>().Single().Text);
+        // A range over every card covers a card added at the top too, as an Excel Table's references do.
+        Assert.AreEqual("Plants!$B$2:$B$4", chart.ChartSpace!.Descendants<C.Formula>().Single().Text);
     }
 
     [TestMethod]

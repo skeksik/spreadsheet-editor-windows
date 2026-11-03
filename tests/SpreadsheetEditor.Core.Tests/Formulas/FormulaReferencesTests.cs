@@ -402,4 +402,19 @@ public sealed class FormulaReferencesTests
         Assert.ThrowsExactly<ArgumentException>(() => FormulaReferences.RenameSheet("=A1", "", "Stock"));
         Assert.ThrowsExactly<ArgumentException>(() => FormulaReferences.RenameSheet("=A1", Sheet, ""));
     }
+    // Mapping
+
+    /// <summary>Moves a cell or range down by 10 rows; a reference to row 5 is gone.</summary>
+    private static A1Area? DownTen(A1Area area) =>
+        area.First.Row == 5 ? null
+        : area with { First = area.First with { Row = area.First.Row + 10 }, Last = area.Last with { Row = area.Last.Row + 10 } };
+
+    [TestMethod]
+    [DataRow("=A2+Data!$B$3:C4", "Data", "=A12+Data!$B$13:C14")]
+    [DataRow("=A5*2", "Data", "=#REF!*2")]
+    [DataRow("=A2+Other!A2+\"A2\"", "Data", "=A12+Other!A2+\"A2\"")]
+    [DataRow("=A2+Data!A2", null, "=A2+Data!A12")]
+    [DataRow("=SUM(A:A)+Data:Other!A2", "Data", "=SUM(A:A)+Data:Other!A2")]
+    public void MapRowsRewritesOnlyTheSheetsReferences(string formula, string? formulaSheet, string expected) =>
+        Assert.AreEqual(expected, FormulaReferences.MapRows(formula, formulaSheet, Sheet, a => a.Kind == A1AreaKind.Columns ? a : DownTen(a)));
 }
