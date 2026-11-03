@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Windows app (ADR 0001, ADR 0002): WinUI 3, unpackaged and self-contained. It renders the core's document and sends user actions;
+    it holds only platform integration (pickers, clipboard, drag and drop, settings storage, the window).
+    Pass -p:Platform=x64 with -r win-x64 (WinUI has no AnyCPU); build.ps1 does.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>SpreadsheetEditor.App</RootNamespace>
+    <!-- The executable is SpreadsheetEditor.exe. -->
+    <AssemblyName>SpreadsheetEditor</AssemblyName>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- The MSIX tooling also builds the app's PRI file (its compiled XAML and resources); without it the publish folder has none and
+         loading MainWindow.xaml fails. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Base" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SpreadsheetEditor.Core/SpreadsheetEditor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppIcon.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

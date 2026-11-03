@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The core (ADR 0002): the document model, .xlsx and .csv reading and writing, the image layout and every rule the app follows. Plain
+    net10.0 with no Windows API, so it builds and tests anywhere .NET runs; the app only renders it and sends user actions.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SpreadsheetEditor.Core</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SpreadsheetEditor.Core.Tests" />
+  </ItemGroup>
+</Project>

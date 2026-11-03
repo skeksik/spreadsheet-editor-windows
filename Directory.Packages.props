@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Every package is declared here once, pinned exactly with NuGet's bracket form, so a restore can never pick another version
+    (CLAUDE.md, "Dependencies"; ADR 0003). Projects reference packages without a version.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup Label="Windows App SDK (approved in advance, CLAUDE.md)">
+    <!--
+      Windows App SDK 2.5.1 as component packages, not the Microsoft.WindowsAppSDK metapackage, so the app ships no AI, ML, Widgets or
+      Search runtime it does not use. Each is pinned to the version the 2.5.1 metapackage pins. Exact pins keep every build on the same runtime.
+    -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="[2.3.9]" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="[2.1.9]" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Foundation" Version="[2.3.12]" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Base" Version="[2.0.4]" />
+  </ItemGroup>
+  <ItemGroup Label="Core">
+    <!-- Open XML SDK, Microsoft, MIT: reads and writes .xlsx (ADR 0002). -->
+    <PackageVersion Include="DocumentFormat.OpenXml" Version="[3.5.1]" />
+  </ItemGroup>
+  <ItemGroup Label="Tests">
+    <!-- MSTest, Microsoft, MIT (ADR 0003). -->
+    <PackageVersion Include="MSTest.TestFramework" Version="[4.5.2]" />
+    <PackageVersion Include="MSTest.TestAdapter" Version="[4.5.2]" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="[18.11.0]" />
+  </ItemGroup>
+</Project>

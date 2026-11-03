@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/SpreadsheetEditor.Core/SpreadsheetEditor.Core.csproj" />
+    <Project Path="src/SpreadsheetEditor.App/SpreadsheetEditor.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SpreadsheetEditor.Core.Tests/SpreadsheetEditor.Core.Tests.csproj" />
+  </Folder>
+</Solution>
