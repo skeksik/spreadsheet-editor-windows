@@ -25,11 +25,18 @@ Write-Host "Published to $out"
 
 if ($Smoke) {
     $exe = Join-Path $out 'SpreadsheetEditor.exe'
+    $started = Get-Date
     $process = Start-Process $exe -ArgumentList '--smoke' -PassThru
     if (-not $process.WaitForExit(60000)) {
         $process.Kill()
         throw 'smoke run: the app did not exit within 60 s'
     }
-    if ($process.ExitCode -ne 0) { throw "smoke run: exit code $($process.ExitCode)" }
+    if ($process.ExitCode -ne 0) {
+        # A crash leaves its exception in the Application event log (".NET Runtime" and "Application Error" entries).
+        Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $started } -ErrorAction SilentlyContinue |
+            Where-Object ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' |
+            Format-List TimeCreated, ProviderName, Id, Message | Out-String -Width 300 | Write-Host
+        throw "smoke run: exit code $($process.ExitCode) (0x$('{0:X8}' -f $process.ExitCode))"
+    }
     Write-Host 'Smoke run passed'
 }
