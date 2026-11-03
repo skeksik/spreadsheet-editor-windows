@@ -8,23 +8,25 @@ references are to `docs/spec.md`.
 - [x] Repository, solution, core and app projects, tests, CI (core on Linux and Windows, app publish and smoke run), CLAUDE.md,
       ADRs 0001–0003, spec, the `/manage` command, the app icon.
 - [x] Core document model (`Model/`): workbook, sheet, column, card, entry, cell value and style, pictures, picture layout.
-- [ ] **Owner's answers to the open questions** in spec §9 that block M1 (2, 3, 6, 7, 9, 18, 20, 26). The manager asks them in one
-      AskUserQuestion round before the first M1 batch and records the answers in the spec. No branch: the manager's docs PR.
+- [x] **Owner's answers to the open questions** in spec §9 that block M1 (2, 3, 6, 7, 9, 18, 20, 26), recorded in the spec
+      (2026-11-03).
 
 ## M1: Files in the core (cloud)
 - [ ] `feat/picture-facts`: read a picture's format and pixel size from its header (PNG, JPEG by its SOF marker, GIF, BMP);
       `IsWide`; the centre-crop source rectangle in 1/100000 units (spec §5.4). Core only, with tests.
 - [ ] `feat/picture-layout`: the cell layout of a value's pictures: units, per-column capacity, the 1762 px cap, the placement loop
-      that also counts picture rows (spec §5.3–5.4, §9 items 25–26), worksheet rows needed, row heights, column widths and the
-      px↔width formulas. Pure functions over the model, with tests. Depends on `feat/picture-facts`.
+      that also counts picture rows, picture rows per worksheet row from the height (spec §5.3–5.4, §9 items 25–26), worksheet
+      rows needed, row heights, column widths and the px↔width formulas. Pure functions over the model, with tests. Depends on `feat/picture-facts`.
 - [ ] `feat/xlsx-read`: open an `.xlsx` with the Open XML SDK and build the model: table detection with metadata cells ignored
-      (§4.1, §9.1), values with their types (§4.2), merged-row grouping (§4.3), theme and indexed colours with tint (§4.4, §9.5),
+      and the hidden-header test (§4.1, §9.1, §9.9), values with their types, dates and formulas (§4.2, §9.2–9.3), merged-row
+      grouping by table merges only (§4.3, §9.7), theme and indexed colours with tint and automatic text colour (§4.4, §9.5–9.6),
       fonts and alignment, pictures anchored to cells, layout metadata clamped (§4.5, §9.50); unsupported sheets skipped and kept
       (§9.10, §9.12). Keeps the opened package for the writer. Tests build workbooks in code.
-- [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values (typed per the owner's §9.3 answer), styles,
-      clearing removed content (§9.16–9.19), row insertion that shifts what lies below (§9.20), merges, row heights, column widths,
-      pictures with source-rectangle crop, print area (§9.27), metadata column; a new workbook from an empty package; repeatable saves
-      (§9.21). Round-trip tests. Depends on `feat/xlsx-read` and `feat/picture-layout`.
+- [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
+      with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
+      below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
+      merges, row heights, column widths, pictures with source-rectangle crop, print area (§9.27), metadata column; a new workbook
+      from an empty package; repeatable saves (§9.21). Round-trip tests. Depends on `feat/xlsx-read` and `feat/picture-layout`.
 - [ ] `feat/csv-io`: read and write `.csv` (§4.7, §5.9, §9.4, §9.14–9.15, §9.34–9.35), BOM detection, tests.
 - [ ] `feat/sheet-names`: worksheet name rules and unique names for new and duplicated sheets (§9.39), with tests.
 
