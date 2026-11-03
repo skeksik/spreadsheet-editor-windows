@@ -13,14 +13,6 @@ internal static class LayoutMetadata
     public const string ImagesPerRowPrefix = "ExcelImagesPerRow:";
     public const string WidthPrefix = "ImageWidth:";
 
-    public const int MinWidth = 50;
-    public const int MaxWidth = 1000;
-    public const int MinHeight = 50;
-    public const int MaxHeight = 500;
-
-    /// <summary>The widest a cell's picture row may be, in pixels; pictures per row are at most this over the width (docs/spec.md §1.4).</summary>
-    public const int MaxRowWidth = 1762;
-
     /// <summary>
     /// Reads the three cells in order, rows 1, 2, 3. The first that is missing or does not parse stops reading: it and the ones after it
     /// keep their defaults. Then every value is clamped to its range, pictures per row to the maximum for the (clamped) width.
@@ -43,14 +35,11 @@ internal static class LayoutMetadata
                 }
             }
         }
-        width = Math.Clamp(width, MinWidth, MaxWidth);
-        height = Math.Clamp(height, MinHeight, MaxHeight);
-        perRow = Math.Clamp(perRow, 1, MaxImagesPerRow(width));
+        width = Math.Clamp(width, PictureLimits.MinWidth, PictureLimits.MaxWidth);
+        height = Math.Clamp(height, PictureLimits.MinHeight, PictureLimits.MaxHeight);
+        perRow = Math.Clamp(perRow, 1, PictureLimits.MaxImagesPerRow(width));
         return new ImageLayout(width, height, perRow);
     }
-
-    /// <summary>max(1, floor(1762 / width)) (docs/spec.md §1.4).</summary>
-    public static int MaxImagesPerRow(int width) => Math.Max(1, MaxRowWidth / Math.Max(1, width));
 
     /// <summary>
     /// True when the text is one of the three metadata strings: a prefix, then an integer. Such cells are ignored when finding the table

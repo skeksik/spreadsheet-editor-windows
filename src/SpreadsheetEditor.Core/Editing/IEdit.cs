@@ -12,4 +12,7 @@ internal interface IEdit
     /// are separate steps.
     /// </summary>
     bool TryMerge(IEdit next);
+
+    /// <summary>True when the step, after merging, changes nothing (typing that ended back at the old text): the history drops it.</summary>
+    bool IsEmpty { get; }
 }

@@ -8,6 +8,12 @@ public sealed class Workbook
 {
     public List<Sheet> Sheets { get; } = [];
 
+    /// <summary>
+    /// The names of the worksheets the app does not show (chart and other non-grid sheets, and worksheets without an occupied cell), kept
+    /// in the file as they are (docs/spec.md §9.10, §9.12). A sheet the user adds or renames must not take one of them (§9.39).
+    /// </summary>
+    public List<string> SkippedSheetNames { get; } = [];
+
     /// <summary>The file it was read from, or null for a new workbook.</summary>
     public string? SourcePath { get; set; }
 

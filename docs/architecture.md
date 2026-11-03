@@ -9,15 +9,17 @@ SpreadsheetEditor.App (WinUI 3, net10.0-windows)
         │ references
         ▼
 SpreadsheetEditor.Core (net10.0, no Windows API)
-  Model/       Workbook, Sheet, Column, Card, Entry, CellStyle, EntryImage, ImageLayout, RgbColor, CellValue, NumberFormat
+  Model/       Workbook, Sheet, Column, Card, Entry, CellStyle, EntryImage, ImageLayout, PictureLimits, RgbColor, CellValue,
+               NumberFormat, SheetNames (name rules, new and copy names)
   Values/      a value's text for a culture and edited text parsed back; date serials (1900 and 1904); date and time number formats
   Xlsx/        reader (table detection, cards, styles, theme colours, pictures) and writer (in-place edit of the package)
   Csv/         reader and writer
   Imaging/     picture header facts (pixel size, format), the cell layout of pictures, crop rectangles
   Formulas/    A1 references in formula text: shifted for inserted or deleted rows, translated for shared formulas, renamed sheets
-  Editing/     WorkbookEditor: operations on the model (cards and entries; values, sheets, table name, picture layout to come) with undo,
-               redo, the modified flag and change events (WorkbookChange: CardInserted, CardRemoved, CardMoved, EntriesChanged,
-               EntryRenamed)
+  Editing/     WorkbookEditor: operations on the model (sheets, cards, entries, values, table name, picture layout) with undo, redo,
+               the modified flag and change events (WorkbookChange: SheetInserted, SheetRemoved, SheetMoved, SheetRenamed,
+               CardInserted, CardRemoved, CardMoved, EntriesChanged, EntryRenamed, EntryTextChanged, EntryStyleChanged,
+               EntryPicturesChanged, TableNameChanged, PictureLayoutChanged, AspectLockChanged)
 ```
 
 ## The document
@@ -32,8 +34,19 @@ The app edits the document only through `WorkbookEditor`, on the UI thread (the 
 undoable step on one history: a new step drops the redo steps, and loading clears the history. Cards are identified by the `Card`
 object, entries by their `Column` object (spec §9.36); a row span belongs to its card and moves with it, a new card has span 1 and a
 duplicate keeps its source's span but, like every new card, has no source row (`Card.SourceFirstRow` is null), which is how the writer
-tells new cards from read ones. Consecutive renames of one entry (the app sends one per keystroke) are a single step until another
-operation, an undo or redo, a save or `EndTyping` (focus leaves the field). The modified flag compares the undo depth with the depth at
+tells new cards from read ones. Typing is sent one call per keystroke: consecutive edits of one entry's text, one entry's name or one
+table name are a single step until another operation, an undo or redo, a save or `EndTyping` (focus leaves the field), and a step whose
+typing ends back at the old text drops itself, so it leaves the document unmodified. An operation that would change nothing returns
+false and records nothing. Styles are immutable records: setting the fill (or No fill) or the text colour (or Automatic, spec §9.6)
+replaces `Entry.Style`. Pictures are added from file bytes (`PictureFactory`), removed, and reordered within an entry, by `EntryImage`
+identity. Sheet names follow `SheetNames` and must also avoid the worksheets the app does not show (`Workbook.SkippedSheetNames`,
+filled by the reader); an invalid name throws `SheetNameException` with the reason. Duplicating a sheet inserts a deep copy after it with the
+current table name (§9.32) and without the aspect lock; its read cards and columns keep their source rows and positions, and its source
+is the original's marked `IsCopy`, so the writer copies the whole worksheet and writes the copy's table there (§9.30). Removing a sheet
+is an ordinary step (never the last sheet); moving one marks the document modified (§9.31). Picture width, height and pictures per row are clamped to their ranges
+(`PictureLimits`), and each change replaces the whole `ImageLayout`, so one undo restores all three. The aspect lock
+(`Sheet.LockedAspectRatio`, captured when it is turned on) is kept in memory per sheet: it is not undoable, does not mark the document
+modified and is never saved (whether to save it is open, spec §9.51). The modified flag compares the undo depth with the depth at
 the last load or save (`MarkSaved`), so undoing back to the saved state clears it; once a new step drops the redo steps that led back to
 that state, the flag stays set until the next save. After every step, undo and redo, `Changed` carries what changed (an undo raises the
 inverse change) and `StateChanged` says that `CanUndo`, `CanRedo` or `IsModified` may have changed.
