@@ -28,6 +28,12 @@ public sealed class EntryImage
 
     public int PixelHeight { get; }
 
-    /// <summary>A wide picture (at least as wide as tall) takes two layout units in a cell, a tall one one (docs/spec.md).</summary>
-    public bool IsWide => PixelWidth >= PixelHeight;
+    /// <summary>Whether the header gave a format and a positive size. An undecodable picture keeps its bytes (spec §9.28).</summary>
+    public bool IsDecodable => Format != ImageFormat.Unknown && PixelWidth > 0 && PixelHeight > 0;
+
+    /// <summary>
+    /// A wide picture (at least as wide as tall) takes two layout units in a cell, a tall one one (docs/spec.md). An undecodable picture
+    /// is not wide: it takes 1 unit (spec §5.2 step 5).
+    /// </summary>
+    public bool IsWide => IsDecodable && PixelWidth >= PixelHeight;
 }
