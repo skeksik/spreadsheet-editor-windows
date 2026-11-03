@@ -28,6 +28,9 @@ references are to `docs/spec.md`.
       (§9.10, §9.12), hidden worksheets read (§9.12). Keeps the opened package for the writer. Uses `feat/cell-values` for a value's
       text. Tests build workbooks in code. Two PRs: `feat/xlsx-read` (table, values, grouping, metadata, skipped sheets), then
       `feat/xlsx-read-styles` (colours, fonts, alignment, pictures).
+- [ ] `feat/xlsx-shared-formulas`: show and edit a shared formula's dependent cells as their own formula (the master formula with
+      its references shifted), instead of their cached value (§9.3). Until then such cells show their value and are written back
+      untouched unless edited. Depends on `feat/xlsx-read`.
 - [ ] `feat/xlsx-write`: write the model back into the kept package in place (§5): values typed and dates kept (§9.2–9.3), styles
       with automatic text colour (§9.6), clearing removed content (§9.16–9.19), row insertion and deletion that shift what lies
       below (§9.20), a name row inserted for a new table name (§9.18), later-row values of multi-row cards kept (§9.7, §9.24),
