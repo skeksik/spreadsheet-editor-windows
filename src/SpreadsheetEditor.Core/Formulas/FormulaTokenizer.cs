@@ -37,8 +37,10 @@ internal static class FormulaTokenizer
                 if (end < formula.Length && formula[end] == '!' && end - i >= 2)
                 {
                     var name = formula[(i + 1)..(end - 1)].Replace("''", "'", StringComparison.Ordinal);
-                    var multi = name.StartsWith('[') || name.Contains(':', StringComparison.Ordinal) || i == lastBracketEnd;
-                    end = AddPrefixed(tokens, formula, i, end + 1, name, multi);
+                    // A sheet name cannot hold '[' (SheetNames), so a quoted prefix with one names another workbook.
+                    var external = name.Contains('[', StringComparison.Ordinal) || i == lastBracketEnd;
+                    var multi = external || name.Contains(':', StringComparison.Ordinal);
+                    end = AddPrefixed(tokens, formula, i, end + 1, name, multi, external);
                 }
                 else
                 {
@@ -92,7 +94,7 @@ internal static class FormulaTokenizer
         }
         if (end < formula.Length && formula[end] == '!')
         {
-            return AddPrefixed(tokens, formula, start, end + 1, formula[start..end], start == lastBracketEnd);
+            return AddPrefixed(tokens, formula, start, end + 1, formula[start..end], start == lastBracketEnd, start == lastBracketEnd);
         }
         if (end < formula.Length && formula[end] == ':')
         {
@@ -100,7 +102,7 @@ internal static class FormulaTokenizer
             var secondEnd = SkipName(formula, end + 1);
             if (secondEnd > end + 1 && secondEnd < formula.Length && formula[secondEnd] == '!')
             {
-                return AddPrefixed(tokens, formula, start, secondEnd + 1, formula[start..secondEnd], true);
+                return AddPrefixed(tokens, formula, start, secondEnd + 1, formula[start..secondEnd], true, start == lastBracketEnd);
             }
         }
         var kind = end < formula.Length && formula[end] == '(' ? FormulaTokenKind.Function : FormulaTokenKind.Name;
@@ -110,9 +112,11 @@ internal static class FormulaTokenizer
 
     /// <summary>
     /// Adds the token for a sheet prefix running from <paramref name="start"/> to <paramref name="afterBang"/>: a reference when an A1
-    /// area follows, otherwise the prefix alone as Other (as in <c>Sheet1!MyName</c> or <c>Sheet1!#REF!</c>).
+    /// area follows, otherwise the prefix alone as Other (as in <c>Sheet1!MyName</c> or <c>Sheet1!#REF!</c>). Both carry the prefix's
+    /// length and sheet name.
     /// </summary>
-    private static int AddPrefixed(List<FormulaToken> tokens, string formula, int start, int afterBang, string sheetName, bool multi)
+    private static int AddPrefixed(
+        List<FormulaToken> tokens, string formula, int start, int afterBang, string sheetName, bool multi, bool external)
     {
         if (A1Area.TryParse(formula, afterBang, out var area, out var end))
         {
@@ -122,10 +126,17 @@ internal static class FormulaTokenizer
                 PrefixLength = afterBang - start,
                 SheetName = sheetName,
                 IsMultiSheetOrExternal = multi,
+                IsExternal = external,
             });
             return end;
         }
-        tokens.Add(new FormulaToken(FormulaTokenKind.Other, start, afterBang - start));
+        tokens.Add(new FormulaToken(FormulaTokenKind.Other, start, afterBang - start)
+        {
+            PrefixLength = afterBang - start,
+            SheetName = sheetName,
+            IsMultiSheetOrExternal = multi,
+            IsExternal = external,
+        });
         return afterBang;
     }
 
