@@ -5,6 +5,8 @@ Two projects (ADR 0002): a portable core with all the rules, and a thin WinUI 3 
 ```
 SpreadsheetEditor.App (WinUI 3, net10.0-windows)
   Window, title bar, menus, pickers, clipboard, drag and drop, settings, dialogs, resources
+  Strings/     en-US and ru-RU Resources.resw; x:Uid in XAML, Services/Strings in code (docs/notes/localisation.md)
+  Services/    LanguageService (interface language at startup), SettingsStore (%LOCALAPPDATA%\SpreadsheetEditor\settings.json)
   ViewModels/  one per document, sheet, card, entry; bind with x:Bind
         │ references
         ▼
@@ -16,6 +18,7 @@ SpreadsheetEditor.Core (net10.0, no Windows API)
   Csv/         reader and writer
   Imaging/     picture header facts (pixel size, format), the cell layout of pictures, crop rectangles
   Formulas/    A1 references in formula text: shifted for inserted or deleted rows, translated for shared formulas, renamed sheets
+  Localisation/ the interface language rule: an override, else Windows' display language if English or Russian, else English
   Editing/     WorkbookEditor: operations on the model (sheets, cards, entries, values, table name, picture layout) with undo, redo,
                the modified flag and change events (WorkbookChange: SheetInserted, SheetRemoved, SheetMoved, SheetRenamed,
                CardInserted, CardRemoved, CardMoved, EntriesChanged, EntryRenamed, EntryTextChanged, EntryStyleChanged,
