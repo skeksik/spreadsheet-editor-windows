@@ -167,13 +167,17 @@
     <value>ОК</value>
     <comment>The button that closes an error message.</comment>
   </data>
+  <data name="OpenTypeSpreadsheets" xml:space="preserve">
+    <value>Таблицы</value>
+    <comment>Open picker: the file type that holds both .xlsx and .csv. The picker adds the patterns.</comment>
+  </data>
   <data name="SaveTypeXlsx" xml:space="preserve">
     <value>Книга Excel</value>
-    <comment>Save picker: the .xlsx file type.</comment>
+    <comment>Open and save pickers: the .xlsx file type.</comment>
   </data>
   <data name="SaveTypeCsv" xml:space="preserve">
     <value>Файл CSV</value>
-    <comment>Save picker: the .csv file type.</comment>
+    <comment>Open and save pickers: the .csv file type.</comment>
   </data>
   <data name="FileProblem_Unknown" xml:space="preserve">
     <value>Что-то пошло не так. Подробности — ниже.</value>

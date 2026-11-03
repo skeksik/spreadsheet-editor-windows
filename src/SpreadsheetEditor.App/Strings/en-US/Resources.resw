@@ -167,13 +167,17 @@
     <value>OK</value>
     <comment>The button that closes an error message.</comment>
   </data>
+  <data name="OpenTypeSpreadsheets" xml:space="preserve">
+    <value>Spreadsheets</value>
+    <comment>Open picker: the file type that holds both .xlsx and .csv. The picker adds the patterns.</comment>
+  </data>
   <data name="SaveTypeXlsx" xml:space="preserve">
     <value>Excel workbook</value>
-    <comment>Save picker: the .xlsx file type.</comment>
+    <comment>Open and save pickers: the .xlsx file type.</comment>
   </data>
   <data name="SaveTypeCsv" xml:space="preserve">
     <value>CSV file</value>
-    <comment>Save picker: the .csv file type.</comment>
+    <comment>Open and save pickers: the .csv file type.</comment>
   </data>
   <data name="FileProblem_Unknown" xml:space="preserve">
     <value>Something went wrong. The details below say what.</value>

@@ -16,8 +16,9 @@ namespace SpreadsheetEditor.App.Services;
 /// object that contains the path of the saved file" and "Returns null if the file dialog was cancelled or closed without selecting a saved
 /// file"; "FileSavePicker.SuggestedFolder Property": "This property is only a suggestion ... If not specified or the specified path doesn't
 /// exist, defaults to the last folder the user visited." The classes are in Microsoft.WindowsAppSDK.Foundation 2.3.12
-/// (metadata/Microsoft.Windows.Storage.Pickers.winmd), already referenced. Not verified: that the save picker lists FileTypeChoices in
-/// the order they were added (the first is the document's format), and which extension it appends when the user types a name without one.
+/// (metadata/Microsoft.Windows.Storage.Pickers.winmd), already referenced. Seen in the owner's check (docs/notes/app-document-check.md,
+/// 2026-11-03): the save picker lists FileTypeChoices in the order they were added, and appends the chosen type's extension to a name
+/// typed without one.
 /// </remarks>
 internal sealed class DocumentUi(Window window) : IDocumentUi
 {
@@ -26,10 +27,15 @@ internal sealed class DocumentUi(Window window) : IDocumentUi
 
     public async Task<string?> PickFileToOpenAsync(string? folder)
     {
-        // Only the formats the app reads; .xls is not offered (docs/spec.md §9.11, manager's choice 2026-11-03).
+        // Only the formats the app reads; .xls is not offered (docs/spec.md §9.11, manager's choice 2026-11-03). Named choices, as the
+        // save picker has: Microsoft Learn, "FileOpenPicker.FileTypeChoices Property" (Windows App SDK 2.0, read 2026-11-03): "A dictionary
+        // that groups file types into labeled choices that the file open picker dialog presents to the user"; "FileTypeChoices takes
+        // precedence over FileTypeFilter when both defined." The picker adds the patterns to each label, as the save picker showed
+        // "Excel workbook (*.xlsx)" in the owner's check (docs/notes/app-document-check.md); not verified for the open picker.
         var picker = new FileOpenPicker(window.AppWindow.Id);
-        picker.FileTypeFilter.Add(XlsxExtension);
-        picker.FileTypeFilter.Add(CsvExtension);
+        picker.FileTypeChoices.Add(Strings.Get("OpenTypeSpreadsheets"), new List<string> { XlsxExtension, CsvExtension });
+        picker.FileTypeChoices.Add(Strings.Get("SaveTypeXlsx"), new List<string> { XlsxExtension });
+        picker.FileTypeChoices.Add(Strings.Get("SaveTypeCsv"), new List<string> { CsvExtension });
         if (folder is not null)
         {
             picker.SuggestedFolder = folder;
@@ -55,8 +61,8 @@ internal sealed class DocumentUi(Window window) : IDocumentUi
         var result = await picker.PickSaveFileAsync();
         // The result holds only the path: Microsoft Learn, "PickFileResult Class" (read 2026-11-03) lists Path as its only property ("a lightweight class that contains a string attribute representing the file path"), and
         // the picker has no property for the chosen file type after the pick. So the document's format is the fallback for a path without
-        // an extension. Not verified: that the picker appends the chosen type's extension to a name typed without one, which makes the
-        // fallback rare.
+        // an extension. The picker appends the chosen type's extension to a name typed without one (the owner's check), so the fallback
+        // is rare.
         return result is null ? null : new SavePick(result.Path, format);
     }
 
@@ -92,6 +98,20 @@ internal sealed class DocumentUi(Window window) : IDocumentUi
         dialog.Content = panel;
         dialog.CloseButtonText = Strings.Get("ErrorDialogClose");
         dialog.DefaultButton = ContentDialogButton.Close;
+        // Enter chooses OK even though focus starts on the Details expander, whose header would take Enter (Space still expands it).
+        // The dialog gives initial focus to the first focusable element in its content and only then to the default button, and its
+        // buttons are not tab stops: microsoft/microsoft-ui-xaml (main, read 2026-11-03), dxaml/xcp/dxaml/lib/ContentDialog_Partial.cpp,
+        // SetInitialFocusElement ("Try to set focus to the first focusable element in the content area", then "try to focus the default
+        // button"), and controls/dev/CommonStyles/ContentDialog_themeresources.xaml (CloseButton IsTabStop="False"). Not verified: that
+        // PreviewKeyDown on the dialog sees Enter before the expander does.
+        dialog.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter && !e.KeyStatus.WasKeyDown)
+            {
+                e.Handled = true;
+                dialog.Hide();
+            }
+        };
         await dialog.ShowAsync();
     }
 
