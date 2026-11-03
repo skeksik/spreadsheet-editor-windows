@@ -10,4 +10,7 @@ public sealed class Workbook
 
     /// <summary>The file it was read from, or null for a new workbook.</summary>
     public string? SourcePath { get; set; }
+
+    /// <summary>The <c>.xlsx</c> package it was read from, kept for the writer; null for a new workbook or one read from CSV.</summary>
+    internal Xlsx.XlsxSource? Source { get; set; }
 }
