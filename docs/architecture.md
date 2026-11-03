@@ -9,7 +9,8 @@ SpreadsheetEditor.App (WinUI 3, net10.0-windows)
         │ references
         ▼
 SpreadsheetEditor.Core (net10.0, no Windows API)
-  Model/       Workbook, Sheet, Column, Card, Entry, CellStyle, EntryImage, ImageLayout, RgbColor
+  Model/       Workbook, Sheet, Column, Card, Entry, CellStyle, EntryImage, ImageLayout, RgbColor, CellValue, NumberFormat
+  Values/      a value's text for a culture and edited text parsed back; date serials (1900 and 1904); date and time number formats
   Xlsx/        reader (table detection, cards, styles, theme colours, pictures) and writer (in-place edit of the package)
   Csv/         reader and writer
   Imaging/     picture header facts (pixel size, format), the cell layout of pictures, crop rectangles
