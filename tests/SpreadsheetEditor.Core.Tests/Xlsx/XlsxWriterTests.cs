@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml.Packaging;
+using SpreadsheetEditor.Core.Editing;
 using SpreadsheetEditor.Core.Model;
 using SpreadsheetEditor.Core.Tests.Imaging;
 using SpreadsheetEditor.Core.Xlsx;
@@ -818,5 +819,164 @@ public sealed class XlsxWriterTests
         card.Entries.AddRange([new Entry { Text = "Spade" }, new Entry { Text = "2" }]);
         sheet.Cards.Add(card);
         return sheet;
+    }
+
+    [TestMethod]
+    public void ANewDocumentSavedBeforeTypingReopensWithOneDefaultTab()
+    {
+        // File > New: a new workbook with one default sheet (§2.3), saved as it is.
+        var editor = new WorkbookEditor(new Workbook());
+        var name = editor.AddSheet("Sheet").Name;
+
+        var bytes = Write(editor.Workbook);
+
+        var back = Read(bytes);
+        Assert.AreEqual(1, back.Sheets.Count);
+        var sheet = back.Sheets[0];
+        Assert.AreEqual(name, sheet.Name);
+        AssertSequence(sheet.Columns.Select(c => c.Name), "");
+        Assert.AreEqual(1, sheet.Cards.Count);
+        AssertSequence(Texts(sheet.Cards[0]), "");
+        Assert.IsNull(sheet.TableName);
+        Assert.AreEqual((1, 1, 1, 2), (sheet.TableNameColumn, sheet.FirstColumn, sheet.HeaderRow, sheet.FirstDataRow));
+        Assert.AreEqual(new ImageLayout(136, 180, 8), sheet.ImageLayout);
+        Assert.AreEqual(0, back.SkippedSheetNames.Count);
+
+        // Saved again without edits, the worksheet and the workbook's defined names stay as they were.
+        var again = Write(back);
+        using var first = new XlsxPackage(bytes);
+        using var second = new XlsxPackage(again);
+        AssertSameXml(first.Part(name), second.Part(name));
+        AssertSequence(
+            second.Workbook.DefinedNames?.Elements<X.DefinedName>().Select(n => n.OuterXml) ?? [],
+            first.Workbook.DefinedNames?.Elements<X.DefinedName>().Select(n => n.OuterXml).ToArray() ?? []);
+    }
+
+    [TestMethod]
+    public void ANewDocumentKeepsItsPictureSettingsThroughASave()
+    {
+        var editor = new WorkbookEditor(new Workbook());
+        var added = editor.AddSheet("Sheet");
+        editor.SetPictureWidth(added, 200);
+        editor.SetPictureHeight(added, 250);
+        editor.SetPicturesPerRow(added, 2);
+
+        var sheet = Read(Write(editor.Workbook)).Sheets.Single();
+
+        Assert.AreEqual(new ImageLayout(200, 250, 2), sheet.ImageLayout);
+        AssertSequence(Texts(sheet.Cards.Single()), "");
+    }
+
+    [TestMethod]
+    public void AnUntouchedEmptyWorksheetIsWrittenBackUnchanged()
+    {
+        var book = Plants();
+        var empty = book.AddSheet("Empty", hidden: true).Empty("B3").Width(1, 3, 22).Merge("C5:D6").Set("XFD1", "ImageHeight:5000");
+        empty.PageSetup = true;
+        var original = book.ToBytes();
+
+        var workbook = Read(original);
+        Assert.AreEqual(PictureLimits.MaxHeight, workbook.Sheets[1].ImageLayout.Height, "the layout is clamped when read (§9.50)");
+        var bytes = Write(workbook);
+
+        using var before = new XlsxPackage(original);
+        using var after = new XlsxPackage(bytes);
+        AssertSameXml(before.Part("Empty"), after.Part("Empty"));
+        Assert.AreEqual("ImageHeight:5000", after.Text("Empty", "XFD1"), "the value in the file is not clamped while untouched");
+        Assert.AreEqual(X.SheetStateValues.Hidden, after.Entry("Empty").State!.Value);
+        Assert.IsFalse(after.Workbook.DefinedNames?.Elements<X.DefinedName>().Any(n => n.LocalSheetId?.Value == 1) ?? false);
+    }
+
+    [TestMethod]
+    public void ARenamedUntouchedEmptyWorksheetKeepsItsContent()
+    {
+        var book = Plants();
+        book.AddSheet("Empty").Width(1, 1, 30).Merge("A3:B4");
+        var original = book.ToBytes();
+
+        var bytes = Change(original, w => w.Sheets[1].Name = "Renamed");
+
+        using var before = new XlsxPackage(original);
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(after.SheetNames, "Plants", "Renamed");
+        AssertSameXml(before.Part("Empty"), after.Part("Renamed"));
+    }
+
+    [TestMethod]
+    public void AnEditedEmptyWorksheetIsWrittenIntoItsOwnWorksheet()
+    {
+        var book = Plants();
+        var empty = book.AddSheet("Notes").Width(1, 1, 30).Merge("D10:E11");
+        empty.PageSetup = true;
+        var original = book.ToBytes();
+
+        var bytes = Change(original, w =>
+        {
+            var sheet = w.Sheets[1];
+            sheet.Columns[0].Name = "Note";
+            sheet.Cards[0].Entries[0].Text = "Water the fern";
+        });
+
+        using var before = new XlsxPackage(original);
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(after.SheetNames, "Plants", "Notes");
+        Assert.AreEqual(before.Part("Notes").Uri, after.Part("Notes").Uri);
+        Assert.AreEqual("Note", after.Text("Notes", "A1"));
+        Assert.AreEqual("Water the fern", after.Text("Notes", "A2"));
+        Assert.AreEqual("ImageHeight:180", after.Text("Notes", "XFD1"));
+        var worksheet = after.Worksheet("Notes");
+        Assert.AreEqual(30d, worksheet.GetFirstChild<X.Columns>()!.Elements<X.Column>().First(c => c.Min!.Value == 1).Width!.Value);
+        Assert.AreEqual("D10:E11", worksheet.Descendants<X.MergeCell>().Single().Reference!.Value);
+        Assert.AreEqual(before.Worksheet("Notes").GetFirstChild<X.PageSetup>()!.OuterXml, worksheet.GetFirstChild<X.PageSetup>()!.OuterXml);
+        var back = Read(bytes).Sheets[1];
+        AssertSequence(back.Columns.Select(c => c.Name), "Note");
+        AssertSequence(Texts(back.Cards.Single()), "Water the fern");
+    }
+
+    [TestMethod]
+    public void ChangingOnlyThePictureSettingsOfAnEmptyWorksheetWritesThem()
+    {
+        var book = Plants();
+        book.AddSheet("Empty");
+
+        var bytes = Change(book.ToBytes(), w => w.Sheets[1].ImageLayout = new ImageLayout(136, 200, 8));
+
+        using var after = new XlsxPackage(bytes);
+        Assert.AreEqual("ImageHeight:200", after.Text("Empty", "XFD1"));
+        Assert.AreEqual(new ImageLayout(136, 200, 8), Read(bytes).Sheets[1].ImageLayout);
+    }
+
+    [TestMethod]
+    public void RemovingAnEmptyTabDeletesItsWorksheet()
+    {
+        var book = Plants();
+        book.AddSheet("Empty");
+        book.AddChartSheet("Chart");
+
+        var bytes = Change(book.ToBytes(), w => w.Sheets.RemoveAt(1));
+
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(after.SheetNames, "Plants", "Chart");
+        Assert.AreEqual(1, after.WorkbookPart.WorksheetParts.Count());
+    }
+
+    [TestMethod]
+    public void ADuplicatedUntouchedEmptySheetCopiesTheWorksheet()
+    {
+        var book = Plants();
+        book.AddSheet("Empty").Width(1, 1, 30);
+        var original = book.ToBytes();
+
+        var bytes = Change(original, w =>
+        {
+            var editor = new WorkbookEditor(w);
+            editor.DuplicateSheet(w.Sheets[1]);
+        });
+
+        using var before = new XlsxPackage(original);
+        using var after = new XlsxPackage(bytes);
+        AssertSequence(after.SheetNames, "Plants", "Empty", "Empty (Copy)");
+        AssertSameXml(before.Part("Empty"), after.Part("Empty"));
+        AssertSameXml(before.Part("Empty"), after.Part("Empty (Copy)"));
     }
 }
